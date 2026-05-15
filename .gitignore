@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# EAS / build outputs
+*.apk
+*.aab
+*.ipa
+build/
+build-*/
+android-build/
+ios-build/
+
+# Native generated folders
+# Mantenha ignorado se você está usando Expo Managed.
+# Remova essas linhas se você personalizar código nativo.
+android/
+ios/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+
+# TypeScript
+*.tsbuildinfo
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# Credentials / certificates
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision

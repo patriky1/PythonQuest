@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+
+# Expo local files
+.expo/
+
+# Build outputs
+dist/
+web-build/
+build/
+build-*/
+*.apk
+*.aab
+*.ipa
+
+# Native generated folders
+# Se você usa Expo Managed, pode ignorar.
+# Se usa prebuild com alterações nativas, remova android/ e ios/.
+android/
+ios/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Temporary
+tmp/
+temp/
+.cache/
+
+# Credentials / certificates
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Git
+.git/
+.gitignore
