@@ -10,60 +10,24 @@ import React, {
 } from 'react';
 
 import { useAuth } from '@/context/AuthContext';
+import { orderedLessonIds } from '@/data/curriculum';
 
 const MAX_HEARTS = 5;
 
-function createDefaultProgress(): ProgressState {
-  return {
-    xp: 0,
-    hearts: MAX_HEARTS,
-    completedLessonIds: [],
-    badges: [],
-    streak: 0,
-    lastActivityDate: null
-  };
-}
-
-function getProgressStorageKey(userId: string | undefined) {
-  return `@pythonquest:progress:${userId || 'guest'}`;
-}
-
-function normalizeProgress(progress: Partial<ProgressState> | null): ProgressState {
-  if (!progress) {
-    return createDefaultProgress();
-  }
-
-  return {
-    xp: typeof progress.xp === 'number' ? progress.xp : 0,
-    hearts: typeof progress.hearts === 'number' ? progress.hearts : MAX_HEARTS,
-    completedLessonIds: Array.isArray(progress.completedLessonIds)
-      ? progress.completedLessonIds
-      : [],
-    badges: Array.isArray(progress.badges) ? progress.badges : [],
-    streak: typeof progress.streak === 'number' ? progress.streak : 0,
-    lastActivityDate: progress.lastActivityDate ?? null
-  };
-}
-
-function getTodayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function addUniqueItem<T>(items: T[], item: T) {
-  if (items.includes(item)) {
-    return items;
-  }
-
-  return [...items, item];
-}
-
 export type ProgressState = {
   xp: number;
+  streak: number;
   hearts: number;
   completedLessonIds: string[];
   badges: string[];
-  streak: number;
   lastActivityDate: string | null;
+  lastPlayedAt?: string;
+};
+
+type CompleteLessonPayload = {
+  lessonId: string;
+  earnedXp?: number;
+  badge?: string;
 };
 
 type LessonLike = {
@@ -71,43 +35,164 @@ type LessonLike = {
   xp?: number;
 };
 
+type CompleteLessonInput = string | LessonLike | CompleteLessonPayload;
+
 type ProgressContextValue = {
   progress: ProgressState;
-  isProgressLoading: boolean;
+  hydrated: boolean;
   isLoading: boolean;
-  completeLesson: (lessonOrId: string | LessonLike, xpReward?: number, badge?: string) => Promise<void>;
-  markLessonCompleted: (lessonOrId: string | LessonLike, xpReward?: number, badge?: string) => Promise<void>;
-  restoreHearts: () => Promise<void>;
+  isProgressLoading: boolean;
+  currentLessonId: string;
+  completeLesson: (
+    lessonOrPayload: CompleteLessonInput,
+    xpReward?: number,
+    badge?: string
+  ) => Promise<void>;
+  markLessonCompleted: (
+    lessonOrPayload: CompleteLessonInput,
+    xpReward?: number,
+    badge?: string
+  ) => Promise<void>;
   loseHeart: () => Promise<void>;
+  restoreHearts: () => Promise<void>;
   resetProgress: () => Promise<void>;
   addXp: (amount: number) => Promise<void>;
   addBadge: (badge: string) => Promise<void>;
 };
 
-const ProgressContext = createContext<ProgressContextValue | null>(null);
+const ProgressContext = createContext<ProgressContextValue | undefined>(
+  undefined
+);
+
+function createDefaultProgress(): ProgressState {
+  return {
+    xp: 0,
+    streak: 0,
+    hearts: MAX_HEARTS,
+    completedLessonIds: [],
+    badges: [],
+    lastActivityDate: null,
+    lastPlayedAt: undefined
+  };
+}
+
+function getTodayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getProgressStorageKey(userId?: string) {
+  return `@pythonquest:progress:${userId || 'guest'}`;
+}
+
+function normalizeProgress(rawProgress: Partial<ProgressState> | null): ProgressState {
+  if (!rawProgress) {
+    return createDefaultProgress();
+  }
+
+  return {
+    xp: typeof rawProgress.xp === 'number' ? rawProgress.xp : 0,
+    streak: typeof rawProgress.streak === 'number' ? rawProgress.streak : 0,
+    hearts: typeof rawProgress.hearts === 'number' ? rawProgress.hearts : MAX_HEARTS,
+    completedLessonIds: Array.isArray(rawProgress.completedLessonIds)
+      ? rawProgress.completedLessonIds
+      : [],
+    badges: Array.isArray(rawProgress.badges) ? rawProgress.badges : [],
+    lastActivityDate: rawProgress.lastActivityDate ?? null,
+    lastPlayedAt: rawProgress.lastPlayedAt
+  };
+}
+
+function addUnique<T>(items: T[], item: T) {
+  if (items.includes(item)) {
+    return items;
+  }
+
+  return [...items, item];
+}
+
+function createBadges(progress: ProgressState) {
+  let badges = progress.badges;
+
+  if (progress.completedLessonIds.length >= 1) {
+    badges = addUnique(badges, 'Primeira missão');
+  }
+
+  if (progress.completedLessonIds.length >= 3) {
+    badges = addUnique(badges, 'Trilha aquecida');
+  }
+
+  if (progress.completedLessonIds.length >= 5) {
+    badges = addUnique(badges, 'Explorador Python');
+  }
+
+  if (progress.completedLessonIds.length >= 10) {
+    badges = addUnique(badges, 'Aventureiro do Código');
+  }
+
+  if (progress.xp >= 100) {
+    badges = addUnique(badges, '100 XP conquistados');
+  }
+
+  return badges;
+}
+
+function resolveCompleteLessonPayload(
+  lessonOrPayload: CompleteLessonInput,
+  xpReward = 0,
+  badge?: string
+) {
+  if (typeof lessonOrPayload === 'string') {
+    return {
+      lessonId: lessonOrPayload,
+      earnedXp: xpReward,
+      badge
+    };
+  }
+
+  if ('lessonId' in lessonOrPayload) {
+    return {
+      lessonId: lessonOrPayload.lessonId,
+      earnedXp: lessonOrPayload.earnedXp ?? xpReward,
+      badge: lessonOrPayload.badge ?? badge
+    };
+  }
+
+  return {
+    lessonId: lessonOrPayload.id,
+    earnedXp: xpReward || lessonOrPayload.xp || 0,
+    badge
+  };
+}
+
+function getCurrentLessonId(completedLessonIds: string[]) {
+  const nextLessonId = orderedLessonIds.find(
+    (lessonId) => !completedLessonIds.includes(lessonId)
+  );
+
+  if (nextLessonId) {
+    return nextLessonId;
+  }
+
+  return orderedLessonIds[orderedLessonIds.length - 1];
+}
 
 export function ProgressProvider({ children }: PropsWithChildren) {
   const { user } = useAuth();
 
-  const [progress, setProgress] = useState<ProgressState>(() => createDefaultProgress());
+  const [progress, setProgress] = useState<ProgressState>(() =>
+    createDefaultProgress()
+  );
+
   const [isProgressLoading, setIsProgressLoading] = useState(true);
 
   const progressStorageKey = useMemo(() => {
     return getProgressStorageKey(user?.id);
   }, [user?.id]);
 
-  const saveProgress = useCallback(
-    async (nextProgress: ProgressState) => {
-      setProgress(nextProgress);
-      await AsyncStorage.setItem(progressStorageKey, JSON.stringify(nextProgress));
-    },
-    [progressStorageKey]
-  );
-
   useEffect(() => {
     let isMounted = true;
 
-    async function loadUserProgress() {
+    async function loadProgress() {
       setIsProgressLoading(true);
 
       try {
@@ -135,23 +220,43 @@ export function ProgressProvider({ children }: PropsWithChildren) {
       }
     }
 
-    loadUserProgress();
+    loadProgress();
 
     return () => {
       isMounted = false;
     };
   }, [progressStorageKey]);
 
+  const saveProgress = useCallback(
+    async (nextProgress: ProgressState) => {
+      setProgress(nextProgress);
+      await AsyncStorage.setItem(
+        progressStorageKey,
+        JSON.stringify(nextProgress)
+      );
+    },
+    [progressStorageKey]
+  );
+
   const completeLesson = useCallback(
-    async (lessonOrId: string | LessonLike, xpReward = 0, badge?: string) => {
-      const lessonId = typeof lessonOrId === 'string' ? lessonOrId : lessonOrId.id;
+    async (
+      lessonOrPayload: CompleteLessonInput,
+      xpReward = 0,
+      badge?: string
+    ) => {
+      const payload = resolveCompleteLessonPayload(
+        lessonOrPayload,
+        xpReward,
+        badge
+      );
 
-      const lessonXp =
-        typeof lessonOrId === 'string'
-          ? xpReward
-          : xpReward || lessonOrId.xp || 0;
+      if (!payload.lessonId) {
+        return;
+      }
 
-      const alreadyCompleted = progress.completedLessonIds.includes(lessonId);
+      const alreadyCompleted = progress.completedLessonIds.includes(
+        payload.lessonId
+      );
 
       if (alreadyCompleted) {
         return;
@@ -159,36 +264,33 @@ export function ProgressProvider({ children }: PropsWithChildren) {
 
       const today = getTodayKey();
 
-      const completedLessonIds = addUniqueItem(progress.completedLessonIds, lessonId);
+      const nextCompletedLessonIds = addUnique(
+        progress.completedLessonIds,
+        payload.lessonId
+      );
 
-      let nextBadges = progress.badges;
-
-      if (completedLessonIds.length === 1) {
-        nextBadges = addUniqueItem(nextBadges, 'Primeira missão concluída');
-      }
-
-      if (completedLessonIds.length === 5) {
-        nextBadges = addUniqueItem(nextBadges, 'Explorador Python');
-      }
-
-      if (completedLessonIds.length === 10) {
-        nextBadges = addUniqueItem(nextBadges, 'Aventureiro do Código');
-      }
-
-      if (badge) {
-        nextBadges = addUniqueItem(nextBadges, badge);
-      }
-
-      const nextProgress: ProgressState = {
+      const nextProgressBase: ProgressState = {
         ...progress,
-        xp: progress.xp + lessonXp,
-        completedLessonIds,
-        badges: nextBadges,
+        xp: progress.xp + (payload.earnedXp || 0),
+        hearts: MAX_HEARTS,
+        completedLessonIds: nextCompletedLessonIds,
         streak:
           progress.lastActivityDate === today
             ? progress.streak
             : progress.streak + 1,
-        lastActivityDate: today
+        lastActivityDate: today,
+        lastPlayedAt: new Date().toISOString()
+      };
+
+      let nextBadges = createBadges(nextProgressBase);
+
+      if (payload.badge) {
+        nextBadges = addUnique(nextBadges, payload.badge);
+      }
+
+      const nextProgress: ProgressState = {
+        ...nextProgressBase,
+        badges: nextBadges
       };
 
       await saveProgress(nextProgress);
@@ -197,20 +299,15 @@ export function ProgressProvider({ children }: PropsWithChildren) {
   );
 
   const markLessonCompleted = useCallback(
-    async (lessonOrId: string | LessonLike, xpReward = 0, badge?: string) => {
-      await completeLesson(lessonOrId, xpReward, badge);
+    async (
+      lessonOrPayload: CompleteLessonInput,
+      xpReward = 0,
+      badge?: string
+    ) => {
+      await completeLesson(lessonOrPayload, xpReward, badge);
     },
     [completeLesson]
   );
-
-  const restoreHearts = useCallback(async () => {
-    const nextProgress: ProgressState = {
-      ...progress,
-      hearts: MAX_HEARTS
-    };
-
-    await saveProgress(nextProgress);
-  }, [progress, saveProgress]);
 
   const loseHeart = useCallback(async () => {
     const nextProgress: ProgressState = {
@@ -221,16 +318,34 @@ export function ProgressProvider({ children }: PropsWithChildren) {
     await saveProgress(nextProgress);
   }, [progress, saveProgress]);
 
+  const restoreHearts = useCallback(async () => {
+    const nextProgress: ProgressState = {
+      ...progress,
+      hearts: MAX_HEARTS
+    };
+
+    await saveProgress(nextProgress);
+  }, [progress, saveProgress]);
+
   const resetProgress = useCallback(async () => {
-    const emptyProgress = createDefaultProgress();
-    await saveProgress(emptyProgress);
+    await saveProgress(createDefaultProgress());
   }, [saveProgress]);
 
   const addXp = useCallback(
     async (amount: number) => {
-      const nextProgress: ProgressState = {
+      if (!amount || amount <= 0) {
+        return;
+      }
+
+      const nextProgressBase: ProgressState = {
         ...progress,
-        xp: progress.xp + amount
+        xp: progress.xp + amount,
+        lastPlayedAt: new Date().toISOString()
+      };
+
+      const nextProgress: ProgressState = {
+        ...nextProgressBase,
+        badges: createBadges(nextProgressBase)
       };
 
       await saveProgress(nextProgress);
@@ -242,7 +357,7 @@ export function ProgressProvider({ children }: PropsWithChildren) {
     async (badge: string) => {
       const nextProgress: ProgressState = {
         ...progress,
-        badges: addUniqueItem(progress.badges, badge)
+        badges: addUnique(progress.badges, badge)
       };
 
       await saveProgress(nextProgress);
@@ -250,15 +365,21 @@ export function ProgressProvider({ children }: PropsWithChildren) {
     [progress, saveProgress]
   );
 
+  const currentLessonId = useMemo(() => {
+    return getCurrentLessonId(progress.completedLessonIds);
+  }, [progress.completedLessonIds]);
+
   const value = useMemo<ProgressContextValue>(() => {
     return {
       progress,
-      isProgressLoading,
+      hydrated: !isProgressLoading,
       isLoading: isProgressLoading,
+      isProgressLoading,
+      currentLessonId,
       completeLesson,
       markLessonCompleted,
-      restoreHearts,
       loseHeart,
+      restoreHearts,
       resetProgress,
       addXp,
       addBadge
@@ -266,10 +387,11 @@ export function ProgressProvider({ children }: PropsWithChildren) {
   }, [
     progress,
     isProgressLoading,
+    currentLessonId,
     completeLesson,
     markLessonCompleted,
-    restoreHearts,
     loseHeart,
+    restoreHearts,
     resetProgress,
     addXp,
     addBadge

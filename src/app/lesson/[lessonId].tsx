@@ -1,21 +1,41 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+
 import { AnswerOption } from '@/components/AnswerOption';
 import { AppButton } from '@/components/AppButton';
 import { LessonStepCard } from '@/components/LessonStepCard';
 import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
+
 import { lessonMap } from '@/data/curriculum';
 import { useProgress } from '@/store/progressStore';
 import { Choice, CodeStep, QuizStep } from '@/types/course';
+
 import { colors, spacing } from '@/theme/colors';
 import { calculateLessonReward } from '@/utils/game';
 
+function shuffleChoices(choices: Choice[]) {
+  const shuffled = [...choices];
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+
+    const temp = shuffled[index];
+    shuffled[index] = shuffled[randomIndex];
+    shuffled[randomIndex] = temp;
+  }
+
+  return shuffled;
+}
+
 export default function LessonScreen() {
   const { lessonId } = useLocalSearchParams<{ lessonId: string }>();
+
   const lesson = lessonId ? lessonMap[lessonId] : undefined;
+
   const { completeLesson, loseHeart, progress } = useProgress();
+
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
@@ -23,33 +43,71 @@ export default function LessonScreen() {
   const [totalAnswered, setTotalAnswered] = useState(0);
 
   const step = lesson?.steps[stepIndex];
-  const progressValue = lesson ? ((stepIndex + 1) / lesson.steps.length) * 100 : 0;
+
+  const progressValue = lesson
+    ? ((stepIndex + 1) / lesson.steps.length) * 100
+    : 0;
+
+  const displayChoices = useMemo(() => {
+    if (!step || (step.type !== 'quiz' && step.type !== 'code')) {
+      return [];
+    }
+
+    return shuffleChoices(step.choices);
+  }, [lesson?.id, step?.id]);
 
   const selectedChoice = useMemo(() => {
-    if (!step || (step.type !== 'quiz' && step.type !== 'code') || !selectedChoiceId) return undefined;
-    return step.choices.find((choice) => choice.id === selectedChoiceId);
-  }, [step, selectedChoiceId]);
+    if (!selectedChoiceId) {
+      return undefined;
+    }
+
+    return displayChoices.find((choice) => choice.id === selectedChoiceId);
+  }, [displayChoices, selectedChoiceId]);
 
   if (!lesson || !step) {
     return (
       <Screen>
         <View style={styles.notFoundCard}>
           <Text style={styles.title}>Missão não encontrada</Text>
-          <Text style={styles.subtitle}>Volte para a trilha e escolha outra lição.</Text>
-          <AppButton title="Voltar para trilha" onPress={() => router.replace('/learn')} />
+          <Text style={styles.subtitle}>
+            Volte para a trilha e escolha outra lição.
+          </Text>
+
+          <AppButton
+            title="Voltar para trilha"
+            onPress={() => router.replace('/learn')}
+          />
         </View>
       </Screen>
     );
   }
 
-  const goNext = () => {
+  const goNext = async () => {
     setSelectedChoiceId(null);
     setRevealed(false);
 
     if (stepIndex + 1 >= lesson.steps.length) {
-      const reward = calculateLessonReward(lesson.xp, correctAnswers, totalAnswered);
-      completeLesson({ lessonId: lesson.id, earnedXp: reward });
-      router.replace({ pathname: '/result/[lessonId]', params: { lessonId: lesson.id, correct: String(correctAnswers), total: String(totalAnswered), xp: String(reward) } });
+      const reward = calculateLessonReward(
+        lesson.xp,
+        correctAnswers,
+        totalAnswered
+      );
+
+      await completeLesson({
+  lessonId: lesson.id,
+  earnedXp: reward
+});
+
+router.replace({
+  pathname: '/result/[lessonId]',
+  params: {
+    lessonId: lesson.id,
+    correct: String(correctAnswers),
+    total: String(totalAnswered),
+    xp: String(reward)
+  }
+});
+
       return;
     }
 
@@ -57,7 +115,10 @@ export default function LessonScreen() {
   };
 
   const handleChoice = (choice: Choice) => {
-    if (revealed) return;
+    if (revealed) {
+      return;
+    }
+
     setSelectedChoiceId(choice.id);
     setRevealed(true);
     setTotalAnswered((current) => current + 1);
@@ -74,9 +135,15 @@ export default function LessonScreen() {
 
     return (
       <View style={styles.challengeCard}>
-        <Text style={styles.badge}>{isCode ? 'DESAFIO DE CÓDIGO' : 'PERGUNTA'}</Text>
+        <Text style={styles.badge}>
+          {isCode ? 'DESAFIO DE CÓDIGO' : 'PERGUNTA'}
+        </Text>
+
         <Text style={styles.challengeTitle}>{interactiveStep.title}</Text>
-        <Text style={styles.question}>{isCode ? interactiveStep.prompt : interactiveStep.question}</Text>
+
+        <Text style={styles.question}>
+          {isCode ? interactiveStep.prompt : interactiveStep.question}
+        </Text>
 
         {isCode ? (
           <View style={styles.codeBox}>
@@ -85,7 +152,7 @@ export default function LessonScreen() {
         ) : null}
 
         <View style={styles.options}>
-          {interactiveStep.choices.map((choice) => (
+          {displayChoices.map((choice) => (
             <AnswerOption
               key={choice.id}
               text={choice.text}
@@ -98,9 +165,21 @@ export default function LessonScreen() {
         </View>
 
         {revealed && selectedChoice ? (
-          <View style={[styles.feedbackBox, selectedChoice.isCorrect ? styles.feedbackSuccess : styles.feedbackError]}>
-            <Text style={styles.feedbackTitle}>{selectedChoice.isCorrect ? 'Boa!' : 'Quase!'}</Text>
-            <Text style={styles.feedbackText}>{selectedChoice.feedback}</Text>
+          <View
+            style={[
+              styles.feedbackBox,
+              selectedChoice.isCorrect
+                ? styles.feedbackSuccess
+                : styles.feedbackError
+            ]}
+          >
+            <Text style={styles.feedbackTitle}>
+              {selectedChoice.isCorrect ? 'Boa!' : 'Quase!'}
+            </Text>
+
+            <Text style={styles.feedbackText}>
+              {selectedChoice.feedback}
+            </Text>
           </View>
         ) : null}
       </View>
@@ -112,24 +191,44 @@ export default function LessonScreen() {
       <View style={styles.container}>
         <View style={styles.topBar}>
           <Text style={styles.hearts}>❤️ {progress.hearts}</Text>
+
           <View style={styles.progressWrap}>
             <ProgressBar value={progressValue} />
           </View>
+
           <Text style={styles.xp}>⚡ {lesson.xp}</Text>
         </View>
 
-        <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.body}
+          contentContainerStyle={styles.bodyContent}
+          showsVerticalScrollIndicator={false}
+        >
           {step.type === 'content' ? (
-            <LessonStepCard title={step.title} body={step.body} analogy={step.analogy} code={step.code} />
+            <LessonStepCard
+              title={step.title}
+              body={step.body}
+              analogy={step.analogy}
+              code={step.code}
+            />
           ) : (
             renderInteractiveStep(step)
           )}
         </ScrollView>
 
         <View style={styles.footer}>
-          <Text style={styles.stepLabel}>Etapa {stepIndex + 1} de {lesson.steps.length}</Text>
+          <Text style={styles.stepLabel}>
+            Etapa {stepIndex + 1} de {lesson.steps.length}
+          </Text>
+
           <AppButton
-            title={step.type === 'content' ? 'Continuar' : revealed ? 'Continuar' : 'Escolha uma resposta'}
+            title={
+              step.type === 'content'
+                ? 'Continuar'
+                : revealed
+                  ? 'Continuar'
+                  : 'Escolha uma resposta'
+            }
             disabled={step.type !== 'content' && !revealed}
             onPress={goNext}
           />
@@ -168,10 +267,10 @@ const styles = StyleSheet.create({
     flex: 1
   },
   bodyContent: {
-  flexGrow: 1,
-  justifyContent: 'flex-start',
-  paddingVertical: spacing.md
-},
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+    paddingVertical: spacing.md
+  },
   footer: {
     gap: spacing.sm,
     paddingBottom: spacing.sm

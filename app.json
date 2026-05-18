@@ -31,7 +31,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#111827"
         }
-      ]
+      ],
+      "expo-image"
     ],
     "web": {
       "bundler": "metro"
