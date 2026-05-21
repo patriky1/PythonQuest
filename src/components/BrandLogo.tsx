@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   logoBox: {
-    backgroundColor: '#111827',
+    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#111827',

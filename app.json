@@ -6,7 +6,7 @@
     "scheme": "pythonquest",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "#F6F6F6",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -16,23 +16,33 @@
     },
     "android": {
       "package": "com.pythonquest.app",
-      "softwareKeyboardLayoutMode": "pan",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#111827"
+        "backgroundColor": "transparent"
       }
     },
     "plugins": [
+      "expo-router",
       [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 180,
-          "resizeMode": "contain",
-          "backgroundColor": "#111827"
+          "resizeMode": "contain"
+          
         }
       ],
-      "expo-image"
+      "expo-image",
+        [
+    "expo-navigation-bar",
+    {
+      "visibility": "hidden",
+      "barStyle": "light",
+      "enforceContrast": false
+    }
+  ],
+      "expo-video"
     ],
     "web": {
       "bundler": "metro"

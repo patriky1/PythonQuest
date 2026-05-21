@@ -197,6 +197,19 @@ export default function HomeScreen() {
               styles.quickActionCard,
               pressed && styles.cardPressed
             ]}
+            onPress={() => router.push('/mission/pythonquest-adventure')}
+          >
+            <Text style={styles.quickActionIcon}>🧭</Text>
+            <Text style={styles.quickActionTitle}>Adventure</Text>
+            <Text style={styles.quickActionText}>
+              Guie o herói com comandos Python.
+            </Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.quickActionCard,
+              pressed && styles.cardPressed
+            ]}
             onPress={openPlayground}
           >
             <Text style={styles.quickActionIcon}>🧪</Text>

@@ -270,7 +270,7 @@ export function CelebrationMascot({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    marginBottom: spacing.lg
+    marginBottom: -95
   },
   animationArea: {
     width: '100%',
@@ -293,8 +293,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   mascotGif: {
-    width: 230,
-    height: 230
+    width: 330,
+    height: 330
   },
   confetti: {
     position: 'absolute',
@@ -305,7 +305,9 @@ const styles = StyleSheet.create({
   },
   textArea: {
     alignItems: 'center',
-    paddingHorizontal: spacing.lg
+    paddingHorizontal: spacing.lg,
+    bottom: 40
+    
   },
   title: {
     color: colors.text,
@@ -320,6 +322,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     textAlign: 'center',
-    marginTop: 8
   }
 });

@@ -6,6 +6,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from 'react';
 
@@ -19,6 +20,7 @@ export type ProgressState = {
   streak: number;
   hearts: number;
   completedLessonIds: string[];
+  completedSpecialMissionIds: string[];
   badges: string[];
   lastActivityDate: string | null;
   lastPlayedAt?: string;
@@ -26,6 +28,12 @@ export type ProgressState = {
 
 type CompleteLessonPayload = {
   lessonId: string;
+  earnedXp?: number;
+  badge?: string;
+};
+
+type CompleteSpecialMissionPayload = {
+  missionId: string;
   earnedXp?: number;
   badge?: string;
 };
@@ -43,16 +51,25 @@ type ProgressContextValue = {
   isLoading: boolean;
   isProgressLoading: boolean;
   currentLessonId: string;
+
   completeLesson: (
     lessonOrPayload: CompleteLessonInput,
     xpReward?: number,
     badge?: string
   ) => Promise<void>;
+
   markLessonCompleted: (
     lessonOrPayload: CompleteLessonInput,
     xpReward?: number,
     badge?: string
   ) => Promise<void>;
+
+  completeSpecialMission: (
+    payload: CompleteSpecialMissionPayload
+  ) => Promise<number>;
+
+  isSpecialMissionCompleted: (missionId: string) => boolean;
+
   loseHeart: () => Promise<void>;
   restoreHearts: () => Promise<void>;
   resetProgress: () => Promise<void>;
@@ -70,6 +87,7 @@ function createDefaultProgress(): ProgressState {
     streak: 0,
     hearts: MAX_HEARTS,
     completedLessonIds: [],
+    completedSpecialMissionIds: [],
     badges: [],
     lastActivityDate: null,
     lastPlayedAt: undefined
@@ -84,7 +102,9 @@ function getProgressStorageKey(userId?: string) {
   return `@pythonquest:progress:${userId || 'guest'}`;
 }
 
-function normalizeProgress(rawProgress: Partial<ProgressState> | null): ProgressState {
+function normalizeProgress(
+  rawProgress: Partial<ProgressState> | null
+): ProgressState {
   if (!rawProgress) {
     return createDefaultProgress();
   }
@@ -92,9 +112,17 @@ function normalizeProgress(rawProgress: Partial<ProgressState> | null): Progress
   return {
     xp: typeof rawProgress.xp === 'number' ? rawProgress.xp : 0,
     streak: typeof rawProgress.streak === 'number' ? rawProgress.streak : 0,
-    hearts: typeof rawProgress.hearts === 'number' ? rawProgress.hearts : MAX_HEARTS,
+    hearts:
+      typeof rawProgress.hearts === 'number'
+        ? rawProgress.hearts
+        : MAX_HEARTS,
     completedLessonIds: Array.isArray(rawProgress.completedLessonIds)
       ? rawProgress.completedLessonIds
+      : [],
+    completedSpecialMissionIds: Array.isArray(
+      rawProgress.completedSpecialMissionIds
+    )
+      ? rawProgress.completedSpecialMissionIds
       : [],
     badges: Array.isArray(rawProgress.badges) ? rawProgress.badges : [],
     lastActivityDate: rawProgress.lastActivityDate ?? null,
@@ -127,6 +155,14 @@ function createBadges(progress: ProgressState) {
 
   if (progress.completedLessonIds.length >= 10) {
     badges = addUnique(badges, 'Aventureiro do Código');
+  }
+
+  if (progress.completedSpecialMissionIds.length >= 1) {
+    badges = addUnique(badges, 'Herói PythonQuest');
+  }
+
+  if (progress.completedSpecialMissionIds.length >= 4) {
+    badges = addUnique(badges, 'Mestre Adventure');
   }
 
   if (progress.xp >= 100) {
@@ -183,11 +219,17 @@ export function ProgressProvider({ children }: PropsWithChildren) {
     createDefaultProgress()
   );
 
+  const progressRef = useRef<ProgressState>(createDefaultProgress());
+
   const [isProgressLoading, setIsProgressLoading] = useState(true);
 
   const progressStorageKey = useMemo(() => {
     return getProgressStorageKey(user?.id);
   }, [user?.id]);
+
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
 
   useEffect(() => {
     let isMounted = true;
@@ -203,15 +245,25 @@ export function ProgressProvider({ children }: PropsWithChildren) {
         }
 
         if (!rawProgress) {
-          setProgress(createDefaultProgress());
+          const defaultProgress = createDefaultProgress();
+          progressRef.current = defaultProgress;
+          setProgress(defaultProgress);
           return;
         }
 
-        const parsedProgress = JSON.parse(rawProgress) as Partial<ProgressState>;
-        setProgress(normalizeProgress(parsedProgress));
+        const parsedProgress = JSON.parse(
+          rawProgress
+        ) as Partial<ProgressState>;
+
+        const normalizedProgress = normalizeProgress(parsedProgress);
+
+        progressRef.current = normalizedProgress;
+        setProgress(normalizedProgress);
       } catch {
         if (isMounted) {
-          setProgress(createDefaultProgress());
+          const defaultProgress = createDefaultProgress();
+          progressRef.current = defaultProgress;
+          setProgress(defaultProgress);
         }
       } finally {
         if (isMounted) {
@@ -227,15 +279,27 @@ export function ProgressProvider({ children }: PropsWithChildren) {
     };
   }, [progressStorageKey]);
 
-  const saveProgress = useCallback(
+  const commitProgress = useCallback(
     async (nextProgress: ProgressState) => {
+      progressRef.current = nextProgress;
       setProgress(nextProgress);
+
       await AsyncStorage.setItem(
         progressStorageKey,
         JSON.stringify(nextProgress)
       );
     },
     [progressStorageKey]
+  );
+
+  const updateProgress = useCallback(
+    async (updater: (current: ProgressState) => ProgressState) => {
+      const currentProgress = progressRef.current;
+      const nextProgress = updater(currentProgress);
+
+      await commitProgress(nextProgress);
+    },
+    [commitProgress]
   );
 
   const completeLesson = useCallback(
@@ -254,48 +318,105 @@ export function ProgressProvider({ children }: PropsWithChildren) {
         return;
       }
 
-      const alreadyCompleted = progress.completedLessonIds.includes(
-        payload.lessonId
-      );
+      await updateProgress((currentProgress) => {
+        const alreadyCompleted =
+          currentProgress.completedLessonIds.includes(payload.lessonId);
 
-      if (alreadyCompleted) {
-        return;
-      }
+        if (alreadyCompleted) {
+          return currentProgress;
+        }
 
-      const today = getTodayKey();
+        const today = getTodayKey();
 
-      const nextCompletedLessonIds = addUnique(
-        progress.completedLessonIds,
-        payload.lessonId
-      );
+        const nextCompletedLessonIds = addUnique(
+          currentProgress.completedLessonIds,
+          payload.lessonId
+        );
 
-      const nextProgressBase: ProgressState = {
-        ...progress,
-        xp: progress.xp + (payload.earnedXp || 0),
-        hearts: MAX_HEARTS,
-        completedLessonIds: nextCompletedLessonIds,
-        streak:
-          progress.lastActivityDate === today
-            ? progress.streak
-            : progress.streak + 1,
-        lastActivityDate: today,
-        lastPlayedAt: new Date().toISOString()
-      };
+        const nextProgressBase: ProgressState = {
+          ...currentProgress,
+          xp: currentProgress.xp + (payload.earnedXp || 0),
+          hearts: MAX_HEARTS,
+          completedLessonIds: nextCompletedLessonIds,
+          streak:
+            currentProgress.lastActivityDate === today
+              ? currentProgress.streak
+              : currentProgress.streak + 1,
+          lastActivityDate: today,
+          lastPlayedAt: new Date().toISOString()
+        };
 
-      let nextBadges = createBadges(nextProgressBase);
+        let nextBadges = createBadges(nextProgressBase);
 
-      if (payload.badge) {
-        nextBadges = addUnique(nextBadges, payload.badge);
-      }
+        if (payload.badge) {
+          nextBadges = addUnique(nextBadges, payload.badge);
+        }
 
-      const nextProgress: ProgressState = {
-        ...nextProgressBase,
-        badges: nextBadges
-      };
-
-      await saveProgress(nextProgress);
+        return {
+          ...nextProgressBase,
+          badges: nextBadges
+        };
+      });
     },
-    [progress, saveProgress]
+    [updateProgress]
+  );
+
+  const completeSpecialMission = useCallback(
+    async (payload: CompleteSpecialMissionPayload) => {
+      if (!payload.missionId) {
+        return 0;
+      }
+
+      let awardedXp = 0;
+
+      await updateProgress((currentProgress) => {
+        const alreadyCompleted =
+          currentProgress.completedSpecialMissionIds.includes(
+            payload.missionId
+          );
+
+        if (alreadyCompleted) {
+          awardedXp = 0;
+          return currentProgress;
+        }
+
+        const today = getTodayKey();
+
+        awardedXp = payload.earnedXp || 0;
+
+        const nextCompletedSpecialMissionIds = addUnique(
+          currentProgress.completedSpecialMissionIds,
+          payload.missionId
+        );
+
+        const nextProgressBase: ProgressState = {
+          ...currentProgress,
+          xp: currentProgress.xp + awardedXp,
+          hearts: MAX_HEARTS,
+          completedSpecialMissionIds: nextCompletedSpecialMissionIds,
+          streak:
+            currentProgress.lastActivityDate === today
+              ? currentProgress.streak
+              : currentProgress.streak + 1,
+          lastActivityDate: today,
+          lastPlayedAt: new Date().toISOString()
+        };
+
+        let nextBadges = createBadges(nextProgressBase);
+
+        if (payload.badge) {
+          nextBadges = addUnique(nextBadges, payload.badge);
+        }
+
+        return {
+          ...nextProgressBase,
+          badges: nextBadges
+        };
+      });
+
+      return awardedXp;
+    },
+    [updateProgress]
   );
 
   const markLessonCompleted = useCallback(
@@ -310,26 +431,22 @@ export function ProgressProvider({ children }: PropsWithChildren) {
   );
 
   const loseHeart = useCallback(async () => {
-    const nextProgress: ProgressState = {
-      ...progress,
-      hearts: Math.max(0, progress.hearts - 1)
-    };
-
-    await saveProgress(nextProgress);
-  }, [progress, saveProgress]);
+    await updateProgress((currentProgress) => ({
+      ...currentProgress,
+      hearts: Math.max(0, currentProgress.hearts - 1)
+    }));
+  }, [updateProgress]);
 
   const restoreHearts = useCallback(async () => {
-    const nextProgress: ProgressState = {
-      ...progress,
+    await updateProgress((currentProgress) => ({
+      ...currentProgress,
       hearts: MAX_HEARTS
-    };
-
-    await saveProgress(nextProgress);
-  }, [progress, saveProgress]);
+    }));
+  }, [updateProgress]);
 
   const resetProgress = useCallback(async () => {
-    await saveProgress(createDefaultProgress());
-  }, [saveProgress]);
+    await commitProgress(createDefaultProgress());
+  }, [commitProgress]);
 
   const addXp = useCallback(
     async (amount: number) => {
@@ -337,32 +454,41 @@ export function ProgressProvider({ children }: PropsWithChildren) {
         return;
       }
 
-      const nextProgressBase: ProgressState = {
-        ...progress,
-        xp: progress.xp + amount,
-        lastPlayedAt: new Date().toISOString()
-      };
+      await updateProgress((currentProgress) => {
+        const nextProgressBase: ProgressState = {
+          ...currentProgress,
+          xp: currentProgress.xp + amount,
+          lastPlayedAt: new Date().toISOString()
+        };
 
-      const nextProgress: ProgressState = {
-        ...nextProgressBase,
-        badges: createBadges(nextProgressBase)
-      };
-
-      await saveProgress(nextProgress);
+        return {
+          ...nextProgressBase,
+          badges: createBadges(nextProgressBase)
+        };
+      });
     },
-    [progress, saveProgress]
+    [updateProgress]
   );
 
   const addBadge = useCallback(
     async (badge: string) => {
-      const nextProgress: ProgressState = {
-        ...progress,
-        badges: addUnique(progress.badges, badge)
-      };
+      if (!badge) {
+        return;
+      }
 
-      await saveProgress(nextProgress);
+      await updateProgress((currentProgress) => ({
+        ...currentProgress,
+        badges: addUnique(currentProgress.badges, badge)
+      }));
     },
-    [progress, saveProgress]
+    [updateProgress]
+  );
+
+  const isSpecialMissionCompleted = useCallback(
+    (missionId: string) => {
+      return progress.completedSpecialMissionIds.includes(missionId);
+    },
+    [progress.completedSpecialMissionIds]
   );
 
   const currentLessonId = useMemo(() => {
@@ -378,6 +504,8 @@ export function ProgressProvider({ children }: PropsWithChildren) {
       currentLessonId,
       completeLesson,
       markLessonCompleted,
+      completeSpecialMission,
+      isSpecialMissionCompleted,
       loseHeart,
       restoreHearts,
       resetProgress,
@@ -390,6 +518,8 @@ export function ProgressProvider({ children }: PropsWithChildren) {
     currentLessonId,
     completeLesson,
     markLessonCompleted,
+    completeSpecialMission,
+    isSpecialMissionCompleted,
     loseHeart,
     restoreHearts,
     resetProgress,

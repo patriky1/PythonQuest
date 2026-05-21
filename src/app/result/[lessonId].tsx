@@ -98,6 +98,7 @@ export default function ResultScreen() {
 
 const styles = StyleSheet.create({
   screen: {
+    bottom: 50,
     padding: spacing.lg,
     justifyContent: 'space-between'
   },
