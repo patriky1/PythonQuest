@@ -3,6 +3,7 @@ import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getBottomSafeArea, TAB_BAR_BASE_HEIGHT } from '@/constants/layout';
 
 import { colors } from '@/theme/colors';
 
@@ -29,6 +30,9 @@ function TabIcon({ focused, icon, activeIcon }: TabIconProps) {
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
 
+  const bottomSafeArea = getBottomSafeArea(insets.bottom);
+const tabBarHeight = TAB_BAR_BASE_HEIGHT + bottomSafeArea;
+
   return (
     <Tabs
       screenOptions={{
@@ -49,12 +53,8 @@ export default function TabsLayout() {
         tabBarStyle: [
           styles.tabBar,
           {
-            height: Platform.OS === 'ios'
-              ? 62 + insets.bottom
-              : 62,
-            paddingBottom: Platform.OS === 'ios'
-              ? Math.max(insets.bottom, 6)
-              : 6
+            height: tabBarHeight,
+            paddingBottom: bottomSafeArea
           }
         ],
 

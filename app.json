@@ -19,7 +19,7 @@
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "transparent"
+        "backgroundColor": "#FFFFFF"
       }
     },
     "plugins": [

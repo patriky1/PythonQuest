@@ -1,50 +1,82 @@
 import React, { PropsWithChildren } from 'react';
 import {
   ScrollView,
+  ScrollViewProps,
+  StyleProp,
   StyleSheet,
   View,
   ViewStyle
 } from 'react-native';
-import { Edge, SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSegments } from 'expo-router';
 
 import { colors, spacing } from '@/theme/colors';
+import { getScreenBottomPadding } from '@/constants/layout';
 
 type ScreenProps = PropsWithChildren<{
   scroll?: boolean;
-  style?: ViewStyle;
-  contentStyle?: ViewStyle;
-  edges?: Edge[];
+  style?: StyleProp<ViewStyle>;
+  contentContainerStyle?: ScrollViewProps['contentContainerStyle'];
 }>;
-
-const defaultEdges: Edge[] = ['top', 'left', 'right'];
 
 export function Screen({
   children,
   scroll = true,
   style,
-  contentStyle,
-  edges = defaultEdges
+  contentContainerStyle
 }: ScreenProps) {
+  const insets = useSafeAreaInsets();
+  const segments = useSegments();
+
+  const isInsideTabs = segments.includes('(tabs)');
+
+  const bottomPadding = isInsideTabs
+    ? getScreenBottomPadding(insets.bottom)
+    : Math.max(insets.bottom, spacing.lg);
+
   if (!scroll) {
     return (
-      <SafeAreaView edges={edges} style={[styles.container, style]}>
-        <View style={[styles.staticContent, contentStyle]}>
-          {children}
-        </View>
-      </SafeAreaView>
+      <View
+        style={[
+          styles.container,
+          {
+            paddingTop: insets.top
+          },
+          style,
+          {
+            paddingBottom: bottomPadding
+          }
+        ]}
+      >
+        {children}
+      </View>
     );
   }
 
   return (
-    <SafeAreaView edges={edges} style={[styles.container, style]}>
+    <View
+      style={[
+        styles.container,
+        {
+          paddingTop: 0
+        },
+        style
+      ]}
+    >
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.content, contentStyle]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            paddingBottom: bottomPadding
+          },
+          contentContainerStyle
+        ]}
       >
         {children}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -53,11 +85,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background
   },
-  staticContent: {
-    flex: 1
-  },
-  content: {
-    padding: spacing.md,
-    paddingBottom: spacing.md
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.md,
   }
 });

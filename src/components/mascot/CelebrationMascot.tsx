@@ -13,6 +13,8 @@ import { colors, spacing } from '@/theme/colors';
 type CelebrationMascotProps = {
   title?: string;
   subtitle?: string;
+  gifSource?: number;
+  allWrong?: boolean;
 };
 
 const confettiColors = [
@@ -25,8 +27,10 @@ const confettiColors = [
 ];
 
 export function CelebrationMascot({
-  title = 'Missão concluída!',
-  subtitle = 'Excelente trabalho. Você avançou na trilha Python.'
+  title,
+  subtitle,
+  gifSource,
+  allWrong = false
 }: CelebrationMascotProps) {
   const mascotScale = useRef(new Animated.Value(0.82)).current;
   const mascotTranslateY = useRef(new Animated.Value(18)).current;
@@ -35,6 +39,12 @@ export function CelebrationMascot({
 
   const titleOpacity = useRef(new Animated.Value(0)).current;
   const titleTranslateY = useRef(new Animated.Value(14)).current;
+
+  const finalTitle =
+    title ??
+    (allWrong
+      ? 'Você errou todas as questões!'
+      : 'Missão concluída!');
 
   const confetti = useMemo(() => {
     return Array.from({ length: 20 }).map((_, index) => ({
@@ -79,23 +89,6 @@ export function CelebrationMascot({
         useNativeDriver: true
       })
     ]).start();
-
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(mascotTranslateY, {
-          toValue: -6,
-          duration: 50,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true
-        }),
-        Animated.timing(mascotTranslateY, {
-          toValue: 0,
-          duration: 850,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true
-        })
-      ])
-    ).start();
 
     Animated.loop(
       Animated.parallel([
@@ -242,7 +235,10 @@ export function CelebrationMascot({
           ]}
         >
           <Image
-            source={require('../../../assets/mascot/snake-celebrate.gif')}
+            source={
+              gifSource ??
+              require('../../../assets/mascot/snake-celebrate.gif')
+            }
             style={styles.mascotGif}
             contentFit="contain"
             cachePolicy="memory-disk"
@@ -260,8 +256,8 @@ export function CelebrationMascot({
           }
         ]}
       >
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
+        <Text style={styles.title}>{finalTitle}</Text>
+        
       </Animated.View>
     </View>
   );
@@ -274,7 +270,7 @@ const styles = StyleSheet.create({
   },
   animationArea: {
     width: '100%',
-    height: 265,
+    height: 230,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden'
@@ -287,14 +283,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#22C55E'
   },
   mascotWrapper: {
-    width: 230,
-    height: 230,
+    width: 130,
+    height: 130,
     alignItems: 'center',
     justifyContent: 'center'
   },
   mascotGif: {
-    width: 330,
-    height: 330
+    width: 230,
+    height: 230
   },
   confetti: {
     position: 'absolute',
@@ -307,13 +303,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
     bottom: 40
-    
   },
   title: {
     color: colors.text,
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: '900',
+    fontSize: 18,
+    lineHeight: 54,
+    fontWeight: '700',
     textAlign: 'center',
     letterSpacing: -0.7
   },
@@ -321,6 +316,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 15,
     lineHeight: 22,
-    textAlign: 'center',
+    textAlign: 'center'
   }
 });

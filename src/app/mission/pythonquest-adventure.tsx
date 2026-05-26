@@ -3,13 +3,14 @@ import {
   Alert,
   Animated,
   Easing,
+  Image,
+  ImageSourcePropType,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View
 } from 'react-native';
@@ -40,7 +41,88 @@ type SuccessResult = {
   isLastMission: boolean;
 };
 
+type BoardIconName = 'hero' | 'coin' | 'bug' | 'wall' | 'goal';
+type BoardIconVariant = 'cell' | 'wall' | 'object' | 'hero';
+
 const GRID_SIZE = 5;
+
+const BOARD_ICONS: Record<BoardIconName, ImageSourcePropType> = {
+  hero: require('../../assets/adventure/hero.png'),
+  coin: require('../../assets/adventure/coin.png'),
+  bug: require('../../assets/adventure/bug.png'),
+  wall: require('../../assets/adventure/wall.png'),
+  goal: require('../../assets/adventure/goal.png')
+};
+
+const VALID_COMMANDS: Command[] = [
+  'moveRight',
+  'moveLeft',
+  'moveUp',
+  'moveDown',
+  'collect',
+  'attack'
+];
+
+const COMMAND_META: Record<
+  Command,
+  {
+    label: string;
+    shortLabel: string;
+    icon: string;
+  }
+> = {
+  moveRight: {
+    label: 'Direita',
+    shortLabel: 'moveRight',
+    icon: '→'
+  },
+  moveLeft: {
+    label: 'Esquerda',
+    shortLabel: 'moveLeft',
+    icon: '←'
+  },
+  moveUp: {
+    label: 'Cima',
+    shortLabel: 'moveUp',
+    icon: '↑'
+  },
+  moveDown: {
+    label: 'Baixo',
+    shortLabel: 'moveDown',
+    icon: '↓'
+  },
+  collect: {
+    label: 'Coletar',
+    shortLabel: 'collect',
+    icon: '●'
+  },
+  attack: {
+    label: 'Atacar',
+    shortLabel: 'attack',
+    icon: '!'
+  }
+};
+
+function BoardIcon({
+  name,
+  variant = 'cell'
+}: {
+  name: BoardIconName;
+  variant?: BoardIconVariant;
+}) {
+  return (
+    <Image
+      source={BOARD_ICONS[name]}
+      resizeMode="contain"
+      style={[
+        styles.boardIcon,
+        variant === 'wall' && styles.boardIconWall,
+        variant === 'object' && styles.boardIconObject,
+        variant === 'hero' && styles.boardIconHero
+      ]}
+    />
+  );
+}
 
 function wait(duration: number) {
   return new Promise<void>((resolve) => {
@@ -88,6 +170,28 @@ function parseCommands(code: string): Command[] {
   return commands;
 }
 
+function commandToCodeLine(command: Command) {
+  return `hero.${command}()`;
+}
+
+function getInitialMissionCommands(mission: AdventureMission) {
+  try {
+    return parseCommands(mission.initialCode);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeAvailableCommand(command: string): Command | null {
+  const normalized = command.replace('hero.', '').replace('()', '').trim();
+
+  if (VALID_COMMANDS.includes(normalized as Command)) {
+    return normalized as Command;
+  }
+
+  return null;
+}
+
 function getNextPosition(
   position: AdventurePosition,
   command: Command
@@ -113,7 +217,6 @@ function getNextPosition(
 
 export default function PythonQuestAdventureScreen() {
   const { width, height } = useWindowDimensions();
-
   const { progress, completeSpecialMission } = useProgress();
 
   const heroAnimation = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -122,7 +225,9 @@ export default function PythonQuestAdventureScreen() {
   const [selectedMissionIndex, setSelectedMissionIndex] = useState(0);
   const mission = PYTHONQUEST_ADVENTURE_MISSIONS[selectedMissionIndex];
 
-  const [code, setCode] = useState(mission.initialCode);
+  const [selectedCommands, setSelectedCommands] = useState<Command[]>(() =>
+    getInitialMissionCommands(mission)
+  );
 
   const [heroPosition, setHeroPosition] = useState<AdventurePosition>(
     mission.startPosition
@@ -130,12 +235,10 @@ export default function PythonQuestAdventureScreen() {
 
   const [hasCoin, setHasCoin] = useState(false);
   const [enemyDefeated, setEnemyDefeated] = useState(false);
-
   const [status, setStatus] = useState<GameStatus>('idle');
   const [logs, setLogs] = useState<string[]>([
     'Escolha uma missão e toque em Executar.'
   ]);
-
   const [successResult, setSuccessResult] = useState<SuccessResult | null>(
     null
   );
@@ -148,8 +251,6 @@ export default function PythonQuestAdventureScreen() {
 
     return Math.max(145, Math.min(widthLimit, sizeLimit));
   }, [width, isSmallScreen]);
-
-  const editorHeight = isSmallScreen ? 132 : 162;
 
   const cellSize = useMemo(() => {
     return boardSize / GRID_SIZE;
@@ -164,6 +265,12 @@ export default function PythonQuestAdventureScreen() {
 
   const isCurrentMissionCompleted =
     progress.completedSpecialMissionIds.includes(mission.id);
+
+  const availableCommands = useMemo(() => {
+    return mission.availableCommands
+      .map((rawCommand) => normalizeAvailableCommand(String(rawCommand)))
+      .filter((command): command is Command => Boolean(command));
+  }, [mission.availableCommands]);
 
   useEffect(() => {
     loadMission(mission);
@@ -202,7 +309,7 @@ export default function PythonQuestAdventureScreen() {
   }, [pulseAnimation]);
 
   function loadMission(nextMission: AdventureMission) {
-    setCode(nextMission.initialCode);
+    setSelectedCommands(getInitialMissionCommands(nextMission));
     setStatus('idle');
     setHeroPosition(nextMission.startPosition);
     setHasCoin(false);
@@ -235,6 +342,59 @@ export default function PythonQuestAdventureScreen() {
       x: mission.startPosition.col * cellSize,
       y: mission.startPosition.row * cellSize
     });
+  }
+
+  function addCommand(command: Command) {
+    if (status === 'running') {
+      return;
+    }
+
+    setSelectedCommands((currentCommands) => [...currentCommands, command]);
+    setStatus('idle');
+    setLogs([`Comando adicionado: ${commandToCodeLine(command)}`]);
+  }
+
+  function removeCommandAtIndex(indexToRemove: number) {
+    if (status === 'running') {
+      return;
+    }
+
+    setSelectedCommands((currentCommands) =>
+      currentCommands.filter((_, index) => index !== indexToRemove)
+    );
+
+    setStatus('idle');
+    setLogs(['Comando removido da sequência.']);
+  }
+
+  function removeLastCommand() {
+    if (status === 'running') {
+      return;
+    }
+
+    setSelectedCommands((currentCommands) => currentCommands.slice(0, -1));
+    setStatus('idle');
+    setLogs(['Último comando removido.']);
+  }
+
+  function clearCommands() {
+    if (status === 'running') {
+      return;
+    }
+
+    setSelectedCommands([]);
+    resetGame();
+    setLogs(['Sequência de comandos limpa.']);
+  }
+
+  function restoreInitialCommands() {
+    if (status === 'running') {
+      return;
+    }
+
+    setSelectedCommands(getInitialMissionCommands(mission));
+    resetGame();
+    setLogs(['Sequência inicial restaurada.']);
   }
 
   function animateHeroTo(position: AdventurePosition) {
@@ -274,7 +434,6 @@ export default function PythonQuestAdventureScreen() {
     }
 
     await animateHeroTo(nextPosition);
-
     setHeroPosition(nextPosition);
 
     return nextPosition;
@@ -295,21 +454,15 @@ export default function PythonQuestAdventureScreen() {
       return;
     }
 
-    let commands: Command[] = [];
+    const commands = [...selectedCommands];
 
-    try {
-      commands = parseCommands(code);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Código inválido.';
-
+    if (commands.length === 0) {
       setStatus('error');
-      setLogs([message]);
+      setLogs(['Adicione pelo menos um comando antes de executar.']);
       return;
     }
 
     resetGame();
-
     setStatus('running');
     setLogs(['Executando comandos...']);
 
@@ -319,7 +472,7 @@ export default function PythonQuestAdventureScreen() {
 
     try {
       for (const command of commands) {
-        addLog(`> hero.${command}()`);
+        addLog(`> ${commandToCodeLine(command)}`);
 
         if (
           command === 'moveRight' ||
@@ -440,7 +593,6 @@ export default function PythonQuestAdventureScreen() {
 
   function renderCell(row: number, col: number) {
     const position = { row, col };
-
     const isGoal = isSamePosition(position, mission.goalPosition);
     const wall = isWall(position);
 
@@ -457,8 +609,8 @@ export default function PythonQuestAdventureScreen() {
           wall && styles.wallCell
         ]}
       >
-        {isGoal ? <Text style={styles.cellIcon}>🏁</Text> : null}
-        {wall ? <Text style={styles.cellIcon}>🧱</Text> : null}
+        {isGoal ? <BoardIcon name="goal" variant="cell" /> : null}
+        {wall ? <BoardIcon name="wall" variant="wall" /> : null}
       </View>
     );
   }
@@ -469,9 +621,7 @@ export default function PythonQuestAdventureScreen() {
         <View style={styles.successContainer}>
           <View style={styles.successCard}>
             <Text style={styles.successEmoji}>🏆</Text>
-
             <Text style={styles.successTitle}>Missão concluída!</Text>
-
             <Text style={styles.successSubtitle}>
               {successResult.missionTitle}
             </Text>
@@ -534,9 +684,7 @@ export default function PythonQuestAdventureScreen() {
                 ]}
                 onPress={backToMission}
               >
-                <Text style={styles.successGhostButtonText}>
-                  Voltar ao código
-                </Text>
+                <Text style={styles.successGhostButtonText}>Voltar</Text>
               </Pressable>
             </View>
           </View>
@@ -660,7 +808,7 @@ export default function PythonQuestAdventureScreen() {
                         }
                       ]}
                     >
-                      <Text style={styles.objectIcon}>🪙</Text>
+                      <BoardIcon name="coin" variant="object" />
                     </Animated.View>
                   ) : null}
 
@@ -672,20 +820,14 @@ export default function PythonQuestAdventureScreen() {
                           width: cellSize,
                           height: cellSize,
                           transform: [
-                            {
-                              translateX:
-                                mission.enemyPosition.col * cellSize
-                            },
-                            {
-                              translateY:
-                                mission.enemyPosition.row * cellSize
-                            },
+                            { translateX: mission.enemyPosition.col * cellSize },
+                            { translateY: mission.enemyPosition.row * cellSize },
                             { scale: pulseAnimation }
                           ]
                         }
                       ]}
                     >
-                      <Text style={styles.objectIcon}>🐞</Text>
+                      <BoardIcon name="bug" variant="object" />
                     </Animated.View>
                   ) : null}
 
@@ -700,7 +842,7 @@ export default function PythonQuestAdventureScreen() {
                     ]}
                   >
                     <View style={styles.heroBody}>
-                      <Text style={styles.heroIcon}>🧑‍💻</Text>
+                      <BoardIcon name="hero" variant="hero" />
                     </View>
                   </Animated.View>
                 </View>
@@ -709,64 +851,135 @@ export default function PythonQuestAdventureScreen() {
                   <Text style={styles.inventoryText}>
                     🧑‍💻 {heroPosition.row + 1},{heroPosition.col + 1}
                   </Text>
-
                   <Text style={styles.inventoryText}>
                     🪙 {hasCoin ? 'ok' : 'pendente'}
                   </Text>
-
                   <Text style={styles.inventoryText}>
                     🐞 {enemyDefeated ? 'ok' : 'ativo'}
                   </Text>
-
                   <Text style={styles.inventoryText}>⚡ {mission.xp}</Text>
                 </View>
               </View>
 
               <View style={styles.editorCard}>
                 <View style={styles.editorHeader}>
-                  <Text style={styles.sectionTitle}>Código</Text>
-
-                  <Text style={styles.commandHint}>
-                    move • collect • attack
-                  </Text>
+                  <Text style={styles.sectionTitle}>Sequência</Text>
+                  <Text style={styles.commandHint}>toque para remover</Text>
                 </View>
 
-                <TextInput
-                  value={code}
-                  onChangeText={setCode}
-                  multiline
-                  scrollEnabled
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  spellCheck={false}
-                  textAlignVertical="top"
-                  style={[styles.editor, { height: editorHeight }]}
-                />
+                <View style={styles.commandTerminal}>
+                  {selectedCommands.length === 0 ? (
+                    <View style={styles.emptyCommandBox}>
+                      <Text style={styles.emptyCommandTitle}>
+                        Nenhum comando adicionado
+                      </Text>
+                      <Text style={styles.emptyCommandText}>
+                        Toque nos botões abaixo para montar a sequência.
+                      </Text>
+                    </View>
+                  ) : (
+                    selectedCommands.map((command, index) => {
+                      const commandMeta = COMMAND_META[command];
+
+                      return (
+                        <Pressable
+                          key={`${command}-${index}`}
+                          style={({ pressed }) => [
+                            styles.commandLine,
+                            pressed && styles.buttonPressed
+                          ]}
+                          onPress={() => removeCommandAtIndex(index)}
+                          disabled={status === 'running'}
+                        >
+                          <View style={styles.commandIndex}>
+                            <Text style={styles.commandIndexText}>
+                              {index + 1}
+                            </Text>
+                          </View>
+                          <Text style={styles.commandIcon}>{commandMeta.icon}</Text>
+                          <Text style={styles.commandCode}>
+                            {commandToCodeLine(command)}
+                          </Text>
+                          <Text style={styles.removeCommandText}>remover</Text>
+                        </Pressable>
+                      );
+                    })
+                  )}
+                </View>
+
+                <View style={styles.availableCommandsBox}>
+                  <Text style={styles.availableCommandsTitle}>
+                    Comandos disponíveis
+                  </Text>
+
+                  <View style={styles.commandButtonsGrid}>
+                    {availableCommands.map((command) => {
+                      const commandMeta = COMMAND_META[command];
+
+                      return (
+                        <Pressable
+                          key={command}
+                          style={({ pressed }) => [
+                            styles.commandButton,
+                            pressed && styles.buttonPressed,
+                            status === 'running' && styles.buttonDisabled
+                          ]}
+                          onPress={() => addCommand(command)}
+                          disabled={status === 'running'}
+                        >
+                          <Text style={styles.commandButtonIcon}>
+                            {commandMeta.icon}
+                          </Text>
+                          <View style={styles.commandButtonTextArea}>
+                            <Text style={styles.commandButtonLabel}>
+                              {commandMeta.label}
+                            </Text>
+                            <Text style={styles.commandButtonCode}>
+                              hero.{commandMeta.shortLabel}()
+                            </Text>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
 
                 <View style={styles.actions}>
                   <Pressable
                     style={({ pressed }) => [
                       styles.secondaryButton,
-                      pressed && styles.buttonPressed
+                      pressed && styles.buttonPressed,
+                      status === 'running' && styles.buttonDisabled
                     ]}
-                    onPress={() => {
-                      setCode(mission.initialCode);
-                      resetGame();
-                    }}
+                    onPress={restoreInitialCommands}
+                    disabled={status === 'running'}
                   >
-                    <Text style={styles.secondaryButtonText}>
-                      Código inicial
-                    </Text>
+                    <Text style={styles.secondaryButtonText}>Inicial</Text>
                   </Pressable>
 
                   <Pressable
                     style={({ pressed }) => [
                       styles.secondaryButton,
-                      pressed && styles.buttonPressed
+                      pressed && styles.buttonPressed,
+                      (status === 'running' || selectedCommands.length === 0) &&
+                        styles.buttonDisabled
                     ]}
-                    onPress={resetGame}
+                    onPress={removeLastCommand}
+                    disabled={status === 'running' || selectedCommands.length === 0}
                   >
-                    <Text style={styles.secondaryButtonText}>Reset</Text>
+                    <Text style={styles.secondaryButtonText}>Desfazer</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.secondaryButton,
+                      pressed && styles.buttonPressed,
+                      status === 'running' && styles.buttonDisabled
+                    ]}
+                    onPress={clearCommands}
+                    disabled={status === 'running'}
+                  >
+                    <Text style={styles.secondaryButtonText}>Limpar</Text>
                   </Pressable>
 
                   <Pressable
@@ -786,7 +999,6 @@ export default function PythonQuestAdventureScreen() {
 
             <View style={styles.consoleCard}>
               <Text style={styles.consoleTitle}>Console</Text>
-
               <View style={styles.consoleLines}>
                 {logs.map((log, index) => (
                   <Text key={`${log}-${index}`} style={styles.consoleText}>
@@ -797,11 +1009,8 @@ export default function PythonQuestAdventureScreen() {
             </View>
 
             <View style={styles.helpBar}>
-              {mission.availableCommands.map((command) => (
-                <Text key={command} style={styles.helpText}>
-                  {command}
-                </Text>
-              ))}
+              <Text style={styles.helpText}>Toque nos comandos para adicionar.</Text>
+              <Text style={styles.helpText}>Toque na sequência para remover.</Text>
             </View>
           </View>
         </ScrollView>
@@ -914,18 +1123,12 @@ const styles = StyleSheet.create({
   goalCell: {
     backgroundColor: '#DCFCE7'
   },
-  cellIcon: {
-    fontSize: 16
-  },
   objectLayer: {
     position: 'absolute',
     left: 0,
     top: 0,
     alignItems: 'center',
     justifyContent: 'center'
-  },
-  objectIcon: {
-    fontSize: 20
   },
   heroSprite: {
     position: 'absolute',
@@ -942,10 +1145,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: '#2563EB'
+    borderColor: '#2563EB',
+    overflow: 'hidden'
   },
-  heroIcon: {
-    fontSize: 19
+  boardIcon: {
+    width: '64%',
+    height: '64%'
+  },
+  boardIconWall: {
+    width: '84%',
+    height: '84%'
+  },
+  boardIconObject: {
+    width: '78%',
+    height: '78%'
+  },
+  boardIconHero: {
+    width: '88%',
+    height: '88%'
   },
   inventoryBar: {
     flexDirection: 'row',
@@ -988,14 +1205,134 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800'
   },
-  editor: {
-    backgroundColor: '#0F172A',
-    color: '#E5E7EB',
+  commandTerminal: {
+    backgroundColor: '#020617',
     borderRadius: 14,
-    padding: 10,
+    padding: 8,
+    minHeight: 132,
+    gap: 6
+  },
+  emptyCommandBox: {
+    minHeight: 112,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12
+  },
+  emptyCommandTitle: {
+    color: '#E5E7EB',
+    fontSize: 13,
+    fontWeight: '900',
+    marginBottom: 4
+  },
+  emptyCommandText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    lineHeight: 16,
+    textAlign: 'center'
+  },
+  commandLine: {
+    minHeight: 38,
+    borderRadius: 10,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    gap: 8
+  },
+  commandIndex: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#1D4ED8',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  commandIndexText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900'
+  },
+  commandIcon: {
+    color: '#FACC15',
+    fontSize: 16,
+    fontWeight: '900',
+    width: 18,
+    textAlign: 'center'
+  },
+  commandCode: {
+    flex: 1,
+    color: '#D1FAE5',
     fontSize: 12,
-    lineHeight: 17,
-    fontFamily: 'monospace'
+    lineHeight: 16,
+    fontWeight: '800',
+    fontFamily: Platform.select({
+      ios: 'Menlo',
+      android: 'monospace',
+      default: 'monospace'
+    })
+  },
+  removeCommandText: {
+    color: '#FCA5A5',
+    fontSize: 10,
+    fontWeight: '900'
+  },
+  availableCommandsBox: {
+    marginTop: 10
+  },
+  availableCommandsTitle: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '900',
+    marginBottom: 7
+  },
+  commandButtonsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7
+  },
+  commandButton: {
+    width: '48%',
+    minHeight: 48,
+    borderRadius: 13,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    gap: 8
+  },
+  commandButtonIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+    color: '#16A34A',
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    fontSize: 15,
+    fontWeight: '900'
+  },
+  commandButtonTextArea: {
+    flex: 1
+  },
+  commandButtonLabel: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '900'
+  },
+  commandButtonCode: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 1,
+    fontFamily: Platform.select({
+      ios: 'Menlo',
+      android: 'monospace',
+      default: 'monospace'
+    })
   },
   actions: {
     flexDirection: 'row',
@@ -1098,8 +1435,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     color: '#1E3A8A',
     fontSize: 10,
-    fontWeight: '900',
-    fontFamily: 'monospace'
+    fontWeight: '900'
   },
   successContainer: {
     flex: 1,

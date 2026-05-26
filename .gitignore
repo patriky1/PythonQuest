@@ -1,60 +1,45 @@
-# Dependencies
-node_modules/
+# Metro / React Native
+.metro-cache/
+.haste/
+*.bundle
 
-# Expo
-.expo/
-dist/
-web-build/
+# Android local/generated
+local.properties
+android/local.properties
+android/.gradle/
+android/app/build/
+android/build/
+android/app/.cxx/
+android/app/release/
+android/app/debug/
+android/app/src/main/assets/index.android.bundle
+android/app/src/main/res/drawable-*/node_modules_*
+android/app/src/main/res/raw/node_modules_*
 
-# EAS / build outputs
-*.apk
-*.aab
-*.ipa
-build/
-build-*/
-android-build/
-ios-build/
+# iOS local/generated
+ios/Pods/
+ios/build/
+ios/DerivedData/
+ios/*.xcworkspace
+ios/Podfile.lock
 
-# Native generated folders
-# Mantenha ignorado se você está usando Expo Managed.
-# Remova essas linhas se você personalizar código nativo.
-android/
-ios/
+# Native crash/debug
+*.hprof
+*.prof
 
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-*.log
+# Expo updates / export
+.expo-shared/
+expo-env.d.ts
 
-# Environment variables
-.env
-.env.*
-!.env.example
+# Package managers
+.pnpm-store/
+.yarn/
+.yarnrc.yml
+.npmrc
 
-# OS files
-.DS_Store
-Thumbs.db
+# Test coverage
+coverage/
 
-# Editor files
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
-.idea/
-
-# TypeScript
-*.tsbuildinfo
-
-# Temporary files
-tmp/
-temp/
-.cache/
-
-# Credentials / certificates
-*.jks
-*.keystore
-*.p8
-*.p12
-*.key
-*.mobileprovision
+# Local IDE
+.history/
+node_modules

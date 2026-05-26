@@ -10,6 +10,10 @@ import { lessonMap } from '@/data/curriculum';
 import { colors, spacing } from '@/theme/colors';
 import { getNextLessonId } from '@/utils/game';
 
+const angryGif = require('../../../assets/mascot/angry.gif');
+
+const HOME_ROUTE = '/(tabs)/home';
+
 export default function ResultScreen() {
   const params = useLocalSearchParams<{
     lessonId: string;
@@ -27,27 +31,35 @@ export default function ResultScreen() {
   const accuracy = total > 0 ? Math.round((correct / total) * 100) : 100;
   const nextLessonId = lesson ? getNextLessonId(lesson.id) : undefined;
 
+  const allAnswersWrong = total > 0 && correct === 0;
+
+  function goHome() {
+    router.replace(`${HOME_ROUTE }`);
+  }
+
   function goToNextLesson() {
     if (nextLessonId) {
       router.replace(`/lesson/${nextLessonId}`);
       return;
     }
 
-    router.replace('/(tabs)');
-  }
-
-  function goHome() {
-    router.replace('/(tabs)');
+    goHome();
   }
 
   return (
     <Screen scroll={false} style={styles.screen}>
       <View style={styles.content}>
         <View style={styles.card}>
-          <CelebrationMascot
-            title="Missão concluída!"
-            subtitle="Boa! Você ganhou XP e avançou na trilha Python."
-          />
+          <View style={styles.mascotBlock}>
+            <CelebrationMascot
+              title={
+                allAnswersWrong
+                  ? 'Você errou todas as questões!'
+                  : 'Missão concluída!'
+              }
+              gifSource={allAnswersWrong ? angryGif : undefined}
+            />
+          </View>
 
           <View style={styles.rewardCard}>
             <Text style={styles.rewardLabel}>XP ganho</Text>
@@ -107,6 +119,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   card: {
+    marginTop: spacing.xl,
     backgroundColor: colors.card,
     borderRadius: 30,
     padding: spacing.lg,
@@ -121,6 +134,11 @@ const styles = StyleSheet.create({
     },
     elevation: 5
   },
+  mascotBlock: {
+    marginBottom: 50,
+    zIndex: 2,
+    elevation: 2
+  },
   rewardCard: {
     backgroundColor: '#FFFBEB',
     borderWidth: 1,
@@ -134,14 +152,15 @@ const styles = StyleSheet.create({
     color: '#92400E',
     fontSize: 13,
     fontWeight: '900',
-    textTransform: 'uppercase'
+    textTransform: 'uppercase',
+    marginTop: 4
   },
   rewardValue: {
     color: '#D97706',
     fontSize: 42,
     lineHeight: 48,
     fontWeight: '900',
-    marginTop: 4
+    marginTop: 5
   },
   accuracyCard: {
     backgroundColor: '#F9FAFB',
@@ -172,8 +191,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm
   },
   actions: {
-    gap: spacing.sm,
-    paddingBottom: spacing.sm
+    gap: 5,
+    top: 30
   },
   primaryButton: {
     minHeight: 56,
@@ -188,7 +207,7 @@ const styles = StyleSheet.create({
       width: 0,
       height: 8
     },
-    elevation: 3
+    elevation: 0
   },
   primaryButtonText: {
     color: '#FFFFFF',
