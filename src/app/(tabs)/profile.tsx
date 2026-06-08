@@ -12,21 +12,30 @@ import { router } from 'expo-router';
 import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
 
-import { lessons } from '@/data/curriculum';
 import { useAuth } from '@/context/AuthContext';
+import { useLearning } from '@/context/LearningContext';
 import { useProgress } from '@/store/progressStore';
 
 import { colors, spacing } from '@/theme/colors';
-import { calculateProgressPercent } from '@/utils/game';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { progress, resetProgress, restoreHearts } = useProgress();
 
-  const percent = calculateProgressPercent(progress.completedLessonIds);
+  const {
+    lessons,
+    isLearningLoading,
+    learningError,
+    reloadLearning
+  } = useLearning();
 
   const completedLessons = progress.completedLessonIds.length;
   const totalLessons = lessons.length;
+
+  const percent =
+    totalLessons === 0
+      ? 0
+      : Math.round((completedLessons / totalLessons) * 100);
 
   const nextBadgeHint = useMemo(() => {
     if (completedLessons === 0) {
@@ -89,6 +98,36 @@ export default function ProfileScreen() {
     router.push('/(tabs)/playground');
   }
 
+  if (isLearningLoading) {
+    return (
+      <Screen>
+        <View style={styles.centerState}>
+          <Text style={styles.centerEmoji}>🐍</Text>
+          <Text style={styles.centerTitle}>Carregando perfil...</Text>
+          <Text style={styles.centerText}>
+            Buscando dados da trilha no servidor.
+          </Text>
+        </View>
+      </Screen>
+    );
+  }
+
+  if (learningError) {
+    return (
+      <Screen>
+        <View style={styles.centerState}>
+          <Text style={styles.centerEmoji}>⚠️</Text>
+          <Text style={styles.centerTitle}>Não foi possível carregar</Text>
+          <Text style={styles.centerText}>{learningError}</Text>
+
+          <Pressable style={styles.retryButton} onPress={reloadLearning}>
+            <Text style={styles.retryButtonText}>Tentar novamente</Text>
+          </Pressable>
+        </View>
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <ScrollView
@@ -108,7 +147,7 @@ export default function ProfileScreen() {
               {user?.name || 'Aprendiz Python'}
             </Text>
             <Text style={styles.profileEmail}>
-              {user?.email || 'Conta local'}
+              {user?.email || 'Conta conectada'}
             </Text>
           </View>
         </View>
@@ -267,6 +306,42 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: spacing.xl
+  },
+  centerState: {
+    flex: 1,
+    minHeight: 500,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg
+  },
+  centerEmoji: {
+    fontSize: 48,
+    marginBottom: spacing.md
+  },
+  centerTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center'
+  },
+  centerText: {
+    color: colors.muted,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginTop: spacing.sm
+  },
+  retryButton: {
+    backgroundColor: '#16A34A',
+    borderRadius: 16,
+    paddingHorizontal: 22,
+    paddingVertical: 13,
+    marginTop: spacing.lg
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900'
   },
   headerCard: {
     backgroundColor: '#111827',

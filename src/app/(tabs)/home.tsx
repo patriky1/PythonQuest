@@ -12,28 +12,37 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
 import { StatCard } from '@/components/StatCard';
 
-import {
-  lessonMap,
-  lessons,
-  orderedLessonIds,
-  topics
-} from '@/data/curriculum';
-
 import { useAuth } from '@/context/AuthContext';
+import { useLearning } from '@/context/LearningContext';
 import { useProgress } from '@/store/progressStore';
 
 import { colors, spacing } from '@/theme/colors';
-import { calculateProgressPercent } from '@/utils/game';
 
 export default function HomeScreen() {
   const { user } = useAuth();
   const { progress } = useProgress();
 
+  const {
+    topics,
+    lessons,
+    orderedLessonIds,
+    lessonMap,
+    isLearningLoading,
+    learningError,
+    reloadLearning
+  } = useLearning();
+
   const completedSet = useMemo(() => {
     return new Set(progress.completedLessonIds);
   }, [progress.completedLessonIds]);
 
-  const percent = calculateProgressPercent(progress.completedLessonIds);
+  const completedLessonsCount = progress.completedLessonIds.length;
+  const totalLessonsCount = lessons.length;
+
+  const percent =
+    totalLessonsCount === 0
+      ? 0
+      : Math.round((completedLessonsCount / totalLessonsCount) * 100);
 
   const nextLesson = useMemo(() => {
     const nextLessonId = orderedLessonIds.find(
@@ -44,11 +53,8 @@ export default function HomeScreen() {
       return null;
     }
 
-    return lessonMap[nextLessonId];
-  }, [completedSet]);
-
-  const completedLessonsCount = progress.completedLessonIds.length;
-  const totalLessonsCount = lessons.length;
+    return lessonMap[nextLessonId] ?? null;
+  }, [orderedLessonIds, completedSet, lessonMap]);
 
   const topicProgress = useMemo(() => {
     return topics.map((topic) => {
@@ -57,6 +63,7 @@ export default function HomeScreen() {
       ).length;
 
       const totalInTopic = topic.lessonIds.length;
+
       const topicPercent =
         totalInTopic === 0
           ? 0
@@ -69,7 +76,7 @@ export default function HomeScreen() {
         topicPercent
       };
     });
-  }, [completedSet]);
+  }, [topics, completedSet]);
 
   function openNextLesson() {
     if (!nextLesson) {
@@ -101,6 +108,36 @@ export default function HomeScreen() {
     router.push('/(tabs)/playground');
   }
 
+  if (isLearningLoading) {
+    return (
+      <Screen>
+        <View style={styles.centerState}>
+          <Text style={styles.centerEmoji}>🐍</Text>
+          <Text style={styles.centerTitle}>Carregando missões...</Text>
+          <Text style={styles.centerText}>
+            Buscando sua trilha Python no servidor.
+          </Text>
+        </View>
+      </Screen>
+    );
+  }
+
+  if (learningError) {
+    return (
+      <Screen>
+        <View style={styles.centerState}>
+          <Text style={styles.centerEmoji}>⚠️</Text>
+          <Text style={styles.centerTitle}>Não foi possível carregar</Text>
+          <Text style={styles.centerText}>{learningError}</Text>
+
+          <Pressable style={styles.retryButton} onPress={reloadLearning}>
+            <Text style={styles.retryButtonText}>Tentar novamente</Text>
+          </Pressable>
+        </View>
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <ScrollView
@@ -110,7 +147,9 @@ export default function HomeScreen() {
         <View style={styles.hero}>
           <View style={styles.heroTopRow}>
             <View style={styles.greetingArea}>
-              <Text style={styles.greeting}>Olá, {user?.name || 'aprendiz'}.</Text>
+              <Text style={styles.greeting}>
+                Olá, {user?.name || 'aprendiz'}.
+              </Text>
               <Text style={styles.heroTitle}>Vamos praticar Python hoje?</Text>
             </View>
 
@@ -120,7 +159,8 @@ export default function HomeScreen() {
           </View>
 
           <Text style={styles.heroDescription}>
-            Complete missões curtas, teste comandos no laboratório e acompanhe seu avanço.
+            Complete missões curtas, teste comandos no laboratório e acompanhe
+            seu avanço.
           </Text>
 
           <View style={styles.heroProgressArea}>
@@ -168,9 +208,7 @@ export default function HomeScreen() {
                 </Text>
 
                 <View style={styles.missionMetaRow}>
-                  <Text style={styles.metaPill}>
-                    ⚡ {nextLesson.xp} XP
-                  </Text>
+                  <Text style={styles.metaPill}>⚡ {nextLesson.xp} XP</Text>
 
                   <Text style={styles.metaPill}>
                     ⏱ {nextLesson.estimatedMinutes} min
@@ -186,7 +224,8 @@ export default function HomeScreen() {
             <Text style={styles.finishedEmoji}>🏆</Text>
             <Text style={styles.finishedTitle}>Trilha concluída</Text>
             <Text style={styles.finishedText}>
-              Você concluiu todas as missões disponíveis. Continue praticando no laboratório Python.
+              Você concluiu todas as missões disponíveis. Continue praticando no
+              laboratório Python.
             </Text>
           </View>
         )}
@@ -205,6 +244,7 @@ export default function HomeScreen() {
               Guie o herói com comandos Python.
             </Text>
           </Pressable>
+
           <Pressable
             style={({ pressed }) => [
               styles.quickActionCard,
@@ -236,7 +276,9 @@ export default function HomeScreen() {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Trilha de aprendizado</Text>
-          <Text style={styles.sectionCaption}>Tópicos organizados por etapa</Text>
+          <Text style={styles.sectionCaption}>
+            Tópicos organizados por etapa
+          </Text>
         </View>
 
         <View style={styles.topicList}>
@@ -322,6 +364,42 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: spacing.xl
+  },
+  centerState: {
+    flex: 1,
+    minHeight: 500,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg
+  },
+  centerEmoji: {
+    fontSize: 48,
+    marginBottom: spacing.md
+  },
+  centerTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center'
+  },
+  centerText: {
+    color: colors.muted,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginTop: spacing.sm
+  },
+  retryButton: {
+    backgroundColor: '#16A34A',
+    borderRadius: 16,
+    paddingHorizontal: 22,
+    paddingVertical: 13,
+    marginTop: spacing.lg
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900'
   },
   hero: {
     backgroundColor: '#111827',

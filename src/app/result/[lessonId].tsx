@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -6,11 +6,9 @@ import { CelebrationMascot } from '@/components/mascot/CelebrationMascot';
 import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
 
-import { lessonMap } from '@/data/curriculum';
+import { useLearning } from '@/context/LearningContext';
 import { colors, spacing } from '@/theme/colors';
-import { getNextLessonId } from '@/utils/game';
 
-const angryGif = require('../../../assets/mascot/angry.gif');
 
 const HOME_ROUTE = '/(tabs)/home';
 
@@ -22,6 +20,14 @@ export default function ResultScreen() {
     xp?: string;
   }>();
 
+  const {
+    lessonMap,
+    orderedLessonIds,
+    isLearningLoading,
+    learningError,
+    reloadLearning
+  } = useLearning();
+
   const lesson = params.lessonId ? lessonMap[params.lessonId] : undefined;
 
   const correct = Number(params.correct ?? 0);
@@ -29,12 +35,25 @@ export default function ResultScreen() {
   const xp = Number(params.xp ?? lesson?.xp ?? 0);
 
   const accuracy = total > 0 ? Math.round((correct / total) * 100) : 100;
-  const nextLessonId = lesson ? getNextLessonId(lesson.id) : undefined;
+
+  const nextLessonId = useMemo(() => {
+    if (!params.lessonId) {
+      return undefined;
+    }
+
+    const currentIndex = orderedLessonIds.indexOf(params.lessonId);
+
+    if (currentIndex < 0) {
+      return undefined;
+    }
+
+    return orderedLessonIds[currentIndex + 1];
+  }, [orderedLessonIds, params.lessonId]);
 
   const allAnswersWrong = total > 0 && correct === 0;
 
   function goHome() {
-    router.replace(`${HOME_ROUTE }`);
+    router.replace(HOME_ROUTE);
   }
 
   function goToNextLesson() {
@@ -44,6 +63,44 @@ export default function ResultScreen() {
     }
 
     goHome();
+  }
+
+  if (isLearningLoading) {
+    return (
+      <Screen scroll={false} style={styles.screen}>
+        <View style={styles.content}>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Carregando resultado...</Text>
+            <Text style={styles.accuracyText}>
+              Buscando dados da trilha no servidor.
+            </Text>
+          </View>
+        </View>
+      </Screen>
+    );
+  }
+
+  if (learningError) {
+    return (
+      <Screen scroll={false} style={styles.screen}>
+        <View style={styles.content}>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Erro ao carregar resultado</Text>
+            <Text style={styles.accuracyText}>{learningError}</Text>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.buttonPressed
+              ]}
+              onPress={reloadLearning}
+            >
+              <Text style={styles.primaryButtonText}>Tentar novamente</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Screen>
+    );
   }
 
   return (
@@ -57,7 +114,7 @@ export default function ResultScreen() {
                   ? 'Você errou todas as questões!'
                   : 'Missão concluída!'
               }
-              gifSource={allAnswersWrong ? angryGif : undefined}
+              gifSource={undefined}
             />
           </View>
 

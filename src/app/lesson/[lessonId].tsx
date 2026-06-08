@@ -8,7 +8,7 @@ import { LessonStepCard } from '@/components/LessonStepCard';
 import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
 
-import { lessonMap } from '@/data/curriculum';
+import { useLearning } from '@/context/LearningContext';
 import { useProgress } from '@/store/progressStore';
 import { Choice, CodeStep, QuizStep } from '@/types/course';
 
@@ -30,7 +30,15 @@ function shuffleChoices(choices: Choice[]) {
 }
 
 export default function LessonScreen() {
-  const { lessonId } = useLocalSearchParams<{ lessonId: string }>();
+  const params = useLocalSearchParams<{ lessonId: string }>();
+  const lessonId = params.lessonId;
+
+  const {
+    lessonMap,
+    isLearningLoading,
+    learningError,
+    reloadLearning
+  } = useLearning();
 
   const lesson = lessonId ? lessonMap[lessonId] : undefined;
 
@@ -64,6 +72,32 @@ export default function LessonScreen() {
     return displayChoices.find((choice) => choice.id === selectedChoiceId);
   }, [displayChoices, selectedChoiceId]);
 
+  if (isLearningLoading) {
+    return (
+      <Screen>
+        <View style={styles.notFoundCard}>
+          <Text style={styles.title}>Carregando missão...</Text>
+          <Text style={styles.subtitle}>
+            Buscando os exercícios no servidor.
+          </Text>
+        </View>
+      </Screen>
+    );
+  }
+
+  if (learningError) {
+    return (
+      <Screen>
+        <View style={styles.notFoundCard}>
+          <Text style={styles.title}>Erro ao carregar missão</Text>
+          <Text style={styles.subtitle}>{learningError}</Text>
+
+          <AppButton title="Tentar novamente" onPress={reloadLearning} />
+        </View>
+      </Screen>
+    );
+  }
+
   if (!lesson || !step) {
     return (
       <Screen>
@@ -75,7 +109,7 @@ export default function LessonScreen() {
 
           <AppButton
             title="Voltar para trilha"
-            onPress={() => router.replace('/learn')}
+            onPress={() => router.replace('/(tabs)/learn')}
           />
         </View>
       </Screen>
@@ -94,19 +128,19 @@ export default function LessonScreen() {
       );
 
       await completeLesson({
-  lessonId: lesson.id,
-  earnedXp: reward
-});
+        lessonId: lesson.id,
+        earnedXp: reward
+      });
 
-router.replace({
-  pathname: '/result/[lessonId]',
-  params: {
-    lessonId: lesson.id,
-    correct: String(correctAnswers),
-    total: String(totalAnswered),
-    xp: String(reward)
-  }
-});
+      router.replace({
+        pathname: '/result/[lessonId]',
+        params: {
+          lessonId: lesson.id,
+          correct: String(correctAnswers),
+          total: String(totalAnswered),
+          xp: String(reward)
+        }
+      });
 
       return;
     }

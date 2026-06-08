@@ -16,11 +16,11 @@ import {
 } from 'react-native';
 
 import { Screen } from '@/components/Screen';
+import { getAdventureMissionsFromApi } from '@/services/learningApi';
 import {
   AdventureMission,
-  AdventurePosition,
-  PYTHONQUEST_ADVENTURE_MISSIONS
-} from '@/data/pythonQuestAdventureMissions';
+  AdventurePosition
+} from '@/types/adventure';
 import { useProgress } from '@/store/progressStore';
 import { colors } from '@/theme/colors';
 
@@ -45,6 +45,20 @@ type BoardIconName = 'hero' | 'coin' | 'bug' | 'wall' | 'goal';
 type BoardIconVariant = 'cell' | 'wall' | 'object' | 'hero';
 
 const GRID_SIZE = 5;
+const EMPTY_MISSION: AdventureMission = {
+  id: '__empty__',
+  title: 'Carregando missão...',
+  description: '',
+  xp: 0,
+  badge: undefined,
+  initialCode: '',
+  availableCommands: [],
+  startPosition: { row: 0, col: 0 },
+  coinPosition: { row: 0, col: 0 },
+  enemyPosition: { row: 0, col: 0 },
+  goalPosition: { row: 0, col: 0 },
+  walls: []
+};
 
 const BOARD_ICONS: Record<BoardIconName, ImageSourcePropType> = {
   hero: require('../../assets/adventure/hero.png'),
@@ -222,16 +236,20 @@ export default function PythonQuestAdventureScreen() {
   const heroAnimation = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const pulseAnimation = useRef(new Animated.Value(1)).current;
 
-  const [selectedMissionIndex, setSelectedMissionIndex] = useState(0);
-  const mission = PYTHONQUEST_ADVENTURE_MISSIONS[selectedMissionIndex];
+const [adventureMissions, setAdventureMissions] = useState<AdventureMission[]>([]);
+const [isLoadingMissions, setIsLoadingMissions] = useState(true);
+const [missionsError, setMissionsError] = useState<string | null>(null);
 
-  const [selectedCommands, setSelectedCommands] = useState<Command[]>(() =>
-    getInitialMissionCommands(mission)
-  );
+const [selectedMissionIndex, setSelectedMissionIndex] = useState(0);
+const mission = adventureMissions[selectedMissionIndex] ?? EMPTY_MISSION;
 
-  const [heroPosition, setHeroPosition] = useState<AdventurePosition>(
-    mission.startPosition
-  );
+const [selectedCommands, setSelectedCommands] = useState<Command[]>(() =>
+  getInitialMissionCommands(EMPTY_MISSION)
+);
+
+const [heroPosition, setHeroPosition] = useState<AdventurePosition>(
+  EMPTY_MISSION.startPosition
+);
 
   const [hasCoin, setHasCoin] = useState(false);
   const [enemyDefeated, setEnemyDefeated] = useState(false);
@@ -242,7 +260,48 @@ export default function PythonQuestAdventureScreen() {
   const [successResult, setSuccessResult] = useState<SuccessResult | null>(
     null
   );
+useEffect(() => {
+  let isMounted = true;
 
+  async function loadAdventureMissions() {
+    setIsLoadingMissions(true);
+    setMissionsError(null);
+
+    try {
+      const missionsFromApi = await getAdventureMissionsFromApi();
+
+      if (!isMounted) {
+        return;
+      }
+
+      setAdventureMissions(missionsFromApi);
+      setSelectedMissionIndex(0);
+
+      if (missionsFromApi[0]) {
+        loadMission(missionsFromApi[0]);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível carregar as missões Adventure.';
+
+      if (isMounted) {
+        setMissionsError(message);
+      }
+    } finally {
+      if (isMounted) {
+        setIsLoadingMissions(false);
+      }
+    }
+  }
+
+  loadAdventureMissions();
+
+  return () => {
+    isMounted = false;
+  };
+}, []);
   const isSmallScreen = height < 740;
 
   const boardSize = useMemo(() => {
@@ -556,7 +615,7 @@ export default function PythonQuestAdventureScreen() {
         awardedXp,
         alreadyCompleted: awardedXp === 0,
         isLastMission:
-          selectedMissionIndex >= PYTHONQUEST_ADVENTURE_MISSIONS.length - 1
+          selectedMissionIndex >= adventureMissions.length - 1
       });
     } catch (error) {
       const message =
@@ -570,7 +629,7 @@ export default function PythonQuestAdventureScreen() {
   function goToNextMission() {
     const nextIndex = selectedMissionIndex + 1;
 
-    if (nextIndex >= PYTHONQUEST_ADVENTURE_MISSIONS.length) {
+    if (nextIndex >= adventureMissions.length) {
       Alert.alert(
         'Parabéns!',
         'Você chegou ao fim das missões PythonQuest Adventure disponíveis.'
@@ -614,7 +673,87 @@ export default function PythonQuestAdventureScreen() {
       </View>
     );
   }
+if (isLoadingMissions) {
+  return (
+    <Screen scroll={false} style={styles.screen}>
+      <View style={styles.successContainer}>
+        <View style={styles.successCard}>
+          <Text style={styles.successEmoji}>🐍</Text>
+          <Text style={styles.successTitle}>Carregando Adventure...</Text>
+          <Text style={styles.successSubtitle}>
+            Buscando missões especiais no servidor.
+          </Text>
+        </View>
+      </View>
+    </Screen>
+  );
+}
 
+if (missionsError) {
+  return (
+    <Screen scroll={false} style={styles.screen}>
+      <View style={styles.successContainer}>
+        <View style={styles.successCard}>
+          <Text style={styles.successEmoji}>⚠️</Text>
+          <Text style={styles.successTitle}>Erro ao carregar</Text>
+          <Text style={styles.successSubtitle}>{missionsError}</Text>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.successPrimaryButton,
+              pressed && styles.buttonPressed
+            ]}
+            onPress={() => {
+              setIsLoadingMissions(true);
+              setMissionsError(null);
+
+              getAdventureMissionsFromApi()
+                .then((missionsFromApi) => {
+                  setAdventureMissions(missionsFromApi);
+                  setSelectedMissionIndex(0);
+
+                  if (missionsFromApi[0]) {
+                    loadMission(missionsFromApi[0]);
+                  }
+                })
+                .catch((error) => {
+                  const message =
+                    error instanceof Error
+                      ? error.message
+                      : 'Não foi possível carregar as missões Adventure.';
+
+                  setMissionsError(message);
+                })
+                .finally(() => {
+                  setIsLoadingMissions(false);
+                });
+            }}
+          >
+            <Text style={styles.successPrimaryButtonText}>
+              Tentar novamente
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Screen>
+  );
+}
+
+if (adventureMissions.length === 0) {
+  return (
+    <Screen scroll={false} style={styles.screen}>
+      <View style={styles.successContainer}>
+        <View style={styles.successCard}>
+          <Text style={styles.successEmoji}>🧭</Text>
+          <Text style={styles.successTitle}>Nenhuma missão encontrada</Text>
+          <Text style={styles.successSubtitle}>
+            O servidor não retornou missões PythonQuest Adventure.
+          </Text>
+        </View>
+      </View>
+    </Screen>
+  );
+}
   if (successResult) {
     return (
       <Screen scroll={false} style={styles.screen}>
@@ -737,7 +876,7 @@ export default function PythonQuestAdventureScreen() {
               keyboardDismissMode="none"
               contentContainerStyle={styles.missionTabs}
             >
-              {PYTHONQUEST_ADVENTURE_MISSIONS.map((adventureMission, index) => {
+              {adventureMissions.map((adventureMission, index) => {
                 const selected = index === selectedMissionIndex;
                 const completed =
                   progress.completedSpecialMissionIds.includes(

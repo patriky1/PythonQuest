@@ -1,7 +1,8 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
 import { Screen } from '@/components/Screen';
-import { topics } from '@/data/curriculum';
+import { useLearning } from '@/context/LearningContext';
 import { colors, spacing } from '@/theme/colors';
 
 const glossary = [
@@ -21,15 +22,57 @@ const glossary = [
 ];
 
 export default function LibraryScreen() {
+  const {
+    topics,
+    isLearningLoading,
+    learningError,
+    reloadLearning
+  } = useLearning();
+
+  if (isLearningLoading) {
+    return (
+      <Screen>
+        <View style={styles.centerState}>
+          <Text style={styles.centerEmoji}>📚</Text>
+          <Text style={styles.centerTitle}>Carregando biblioteca...</Text>
+          <Text style={styles.centerText}>
+            Buscando os tópicos do curso no servidor.
+          </Text>
+        </View>
+      </Screen>
+    );
+  }
+
+  if (learningError) {
+    return (
+      <Screen>
+        <View style={styles.centerState}>
+          <Text style={styles.centerEmoji}>⚠️</Text>
+          <Text style={styles.centerTitle}>Não foi possível carregar</Text>
+          <Text style={styles.centerText}>{learningError}</Text>
+
+          <Pressable style={styles.retryButton} onPress={reloadLearning}>
+            <Text style={styles.retryButtonText}>Tentar novamente</Text>
+          </Pressable>
+        </View>
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       <Text style={styles.title}>Biblioteca</Text>
-      <Text style={styles.subtitle}>Resumo dos tópicos e glossário rápido para revisão.</Text>
+
+      <Text style={styles.subtitle}>
+        Resumo dos tópicos e glossário rápido para revisão.
+      </Text>
 
       <Text style={styles.sectionTitle}>Tópicos do curso</Text>
+
       {topics.map((topic) => (
         <View key={topic.id} style={styles.topicCard}>
           <Text style={styles.topicEmoji}>{topic.emoji}</Text>
+
           <View style={styles.topicInfo}>
             <Text style={styles.topicTitle}>{topic.title}</Text>
             <Text style={styles.topicDescription}>{topic.description}</Text>
@@ -38,6 +81,7 @@ export default function LibraryScreen() {
       ))}
 
       <Text style={styles.sectionTitle}>Glossário rápido</Text>
+
       {glossary.map((item) => (
         <View key={item.term} style={styles.glossaryCard}>
           <Text style={styles.term}>{item.term}</Text>
@@ -49,6 +93,42 @@ export default function LibraryScreen() {
 }
 
 const styles = StyleSheet.create({
+  centerState: {
+    flex: 1,
+    minHeight: 500,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg
+  },
+  centerEmoji: {
+    fontSize: 48,
+    marginBottom: spacing.md
+  },
+  centerTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center'
+  },
+  centerText: {
+    color: colors.muted,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginTop: spacing.sm
+  },
+  retryButton: {
+    backgroundColor: '#16A34A',
+    borderRadius: 16,
+    paddingHorizontal: 22,
+    paddingVertical: 13,
+    marginTop: spacing.lg
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900'
+  },
   title: {
     color: colors.text,
     fontSize: 30,

@@ -1,104 +1,111 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SignInPayload, SignUpPayload, StoredUser, User } from '@/types/auth';
+import { SignInPayload, SignUpPayload, User } from '@/types/auth';
 
-const USERS_KEY = '@pythonquest:users';
+const TOKEN_KEY = '@pythonquest:token';
 const CURRENT_USER_KEY = '@pythonquest:current-user';
 
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
-}
+// Teste no navegador/web:
+// http://localhost:3333
+//
+// Teste no emulador Android:
+// http://10.0.2.2:3333
+//
+// Teste em celular físico:
+// usar o IP do computador na rede, exemplo:
+// http://192.168.0.10:3333
 
-function removePassword(user: StoredUser): User {
-  const { password, ...safeUser } = user;
-  return safeUser;
-}
+import { API_URL } from '@/config/api';
 
-async function getStoredUsers(): Promise<StoredUser[]> {
-  const rawUsers = await AsyncStorage.getItem(USERS_KEY);
+type AuthResponse = {
+  token: string;
+  user: User;
+};
 
-  if (!rawUsers) {
-    return [];
+type MeResponse = {
+  user: User;
+};
+
+async function requestApi<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    }
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const message =
+      data?.message ||
+      data?.error ||
+      'Não foi possível concluir a operação.';
+
+    throw new Error(message);
   }
 
-  try {
-    return JSON.parse(rawUsers) as StoredUser[];
-  } catch {
-    await AsyncStorage.removeItem(USERS_KEY);
-    return [];
-  }
+  return data as T;
 }
 
-async function saveStoredUsers(users: StoredUser[]) {
-  await AsyncStorage.setItem(USERS_KEY, JSON.stringify(users));
+async function saveAuthSession(token: string, user: User) {
+  await AsyncStorage.setItem(TOKEN_KEY, token);
+  await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  const rawUser = await AsyncStorage.getItem(CURRENT_USER_KEY);
+  const token = await AsyncStorage.getItem(TOKEN_KEY);
 
-  if (!rawUser) {
+  if (!token) {
+    await AsyncStorage.removeItem(CURRENT_USER_KEY);
     return null;
   }
 
   try {
-    return JSON.parse(rawUser) as User;
+    const data = await requestApi<MeResponse>('/auth/me', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(data.user));
+
+    return data.user;
   } catch {
+    await AsyncStorage.removeItem(TOKEN_KEY);
     await AsyncStorage.removeItem(CURRENT_USER_KEY);
+
     return null;
   }
 }
 
 export async function createLocalUser(payload: SignUpPayload): Promise<User> {
-  const users = await getStoredUsers();
+  const data = await requestApi<AuthResponse>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
 
-  const email = normalizeEmail(payload.email);
+  await saveAuthSession(data.token, data.user);
 
-  const alreadyExists = users.some((user) => user.email === email);
-
-  if (alreadyExists) {
-    throw new Error('Já existe uma conta cadastrada com este e-mail.');
-  }
-
-  const newUser: StoredUser = {
-    id: String(Date.now()),
-    name: payload.name.trim(),
-    email,
-    password: payload.password,
-    createdAt: new Date().toISOString()
-  };
-
-  const updatedUsers = [...users, newUser];
-
-  await saveStoredUsers(updatedUsers);
-
-  const safeUser = removePassword(newUser);
-
-  await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(safeUser));
-
-  return safeUser;
+  return data.user;
 }
 
 export async function loginLocalUser(payload: SignInPayload): Promise<User> {
-  const users = await getStoredUsers();
+  const data = await requestApi<AuthResponse>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
 
-  const email = normalizeEmail(payload.email);
+  await saveAuthSession(data.token, data.user);
 
-  const foundUser = users.find((user) => user.email === email);
-
-  if (!foundUser) {
-    throw new Error('Usuário não encontrado.');
-  }
-
-  if (foundUser.password !== payload.password) {
-    throw new Error('Senha incorreta.');
-  }
-
-  const safeUser = removePassword(foundUser);
-
-  await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(safeUser));
-
-  return safeUser;
+  return data.user;
 }
 
 export async function logoutLocalUser() {
+  await AsyncStorage.removeItem(TOKEN_KEY);
   await AsyncStorage.removeItem(CURRENT_USER_KEY);
 }

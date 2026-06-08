@@ -32,8 +32,6 @@ export function AppVideoSplash({ onFinish }: AppVideoSplashProps) {
         player={player}
         nativeControls={false}
         contentFit="cover"
-        allowsFullscreen={false}
-        allowsPictureInPicture={false}
       />
 
       <View style={styles.footer}>

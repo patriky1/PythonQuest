@@ -3,10 +3,11 @@ import { StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { AndroidSystemBars } from '@/components/system/AndroidSystemBars';
+
 import { AuthGate } from '@/components/auth/AuthGate';
-import { AuthProvider } from '@/context/AuthContext';
 import { AppVideoSplash } from '@/components/app/AppVideoSplash';
+import { AuthProvider } from '@/context/AuthContext';
+import { LearningProvider } from '@/context/LearningContext';
 import { ProgressProvider } from '@/store/progressStore';
 import { colors } from '@/theme/colors';
 
@@ -40,68 +41,70 @@ export default function RootLayout() {
     <AuthProvider>
       <View style={styles.root}>
         <AuthGate>
-          <ProgressProvider>
-            <StatusBar style="dark" />
+          <LearningProvider>
+            <ProgressProvider>
+              <StatusBar style="dark" />
 
-            <Stack
-              screenOptions={{
-                headerStyle: {
-                  backgroundColor: colors.background
-                },
-                headerShadowVisible: false,
-                headerTitleStyle: {
-                  color: colors.text,
-                  fontWeight: '900'
-                },
-                contentStyle: {
-                  backgroundColor: colors.background
-                }
-              }}
-            >
-              <Stack.Screen
-                name="index"
-                options={{
-                  headerShown: false
+              <Stack
+                screenOptions={{
+                  headerStyle: {
+                    backgroundColor: colors.background
+                  },
+                  headerShadowVisible: false,
+                  headerTitleStyle: {
+                    color: colors.text,
+                    fontWeight: '900'
+                  },
+                  contentStyle: {
+                    backgroundColor: colors.background
+                  }
                 }}
-              />
+              >
+                <Stack.Screen
+                  name="index"
+                  options={{
+                    headerShown: false
+                  }}
+                />
 
-              <Stack.Screen
-                name="auth"
-                options={{
-                  headerShown: false
-                }}
-              />
+                <Stack.Screen
+                  name="auth"
+                  options={{
+                    headerShown: false
+                  }}
+                />
 
-              <Stack.Screen
-                name="(tabs)"
-                options={{
-                  headerShown: false
-                }}
-              />
+                <Stack.Screen
+                  name="(tabs)"
+                  options={{
+                    headerShown: false
+                  }}
+                />
 
-              <Stack.Screen
-                name="mission/pythonquest-adventure"
-                options={{
-                  title: 'PythonQuest Adventure'
-                }}
-              />
+                <Stack.Screen
+                  name="mission/pythonquest-adventure"
+                  options={{
+                    title: 'PythonQuest Adventure'
+                  }}
+                />
 
-              <Stack.Screen
-                name="lesson/[lessonId]"
-                options={{
-                  title: 'Missão'
-                }}
-              />
+                <Stack.Screen
+                  name="lesson/[lessonId]"
+                  options={{
+                    title: 'Missão'
+                  }}
+                />
 
-              <Stack.Screen
-                name="result/[lessonId]"
-                options={{
-                  title: 'Resultado',
-                  headerBackVisible: false
-                }}
-              />
-            </Stack>
-          </ProgressProvider>
+                <Stack.Screen
+                  name="result/[lessonId]"
+                  options={{
+                    title: 'Resultado',
+                    headerBackVisible: false
+                  }}
+                />
+              </Stack>
+            </ProgressProvider>
+          </LearningProvider>
         </AuthGate>
 
         {showVideoSplash ? (
