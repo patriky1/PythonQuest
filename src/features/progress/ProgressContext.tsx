@@ -20,6 +20,7 @@ import {
   createDefaultProgress,
   getCurrentLessonId,
   getTodayKey,
+  normalizeProgress,
   resolveCompleteLessonPayload
 } from '@/features/progress/progress.helpers';
 
@@ -34,6 +35,12 @@ import {
   ProgressContextValue,
   ProgressState
 } from '@/features/progress/progress.types';
+
+import {
+  getProgressFromApi,
+  resetProgressOnApi,
+  saveProgressToApi
+} from '@/services/progressApi';
 
 const ProgressContext = createContext<ProgressContextValue | undefined>(
   undefined
@@ -62,14 +69,39 @@ export function ProgressProvider({ children }: PropsWithChildren) {
       setIsProgressLoading(true);
 
       try {
-        const storedProgress = await loadProgressFromStorage(user?.id);
+        if (!user?.id) {
+          const guestProgress = await loadProgressFromStorage(undefined);
 
-        if (!isMounted) {
+          if (!isMounted) {
+            return;
+          }
+
+          progressRef.current = guestProgress;
+          setProgress(guestProgress);
           return;
         }
 
-        progressRef.current = storedProgress;
-        setProgress(storedProgress);
+        try {
+          const apiProgress = normalizeProgress(await getProgressFromApi());
+
+          if (!isMounted) {
+            return;
+          }
+
+          progressRef.current = apiProgress;
+          setProgress(apiProgress);
+
+          await saveProgressToStorage(user.id, apiProgress);
+        } catch {
+          const storedProgress = await loadProgressFromStorage(user.id);
+
+          if (!isMounted) {
+            return;
+          }
+
+          progressRef.current = storedProgress;
+          setProgress(storedProgress);
+        }
       } finally {
         if (isMounted) {
           setIsProgressLoading(false);
@@ -86,10 +118,28 @@ export function ProgressProvider({ children }: PropsWithChildren) {
 
   const commitProgress = useCallback(
     async (nextProgress: ProgressState) => {
-      progressRef.current = nextProgress;
-      setProgress(nextProgress);
+      const normalizedProgress = normalizeProgress(nextProgress);
 
-      await saveProgressToStorage(user?.id, nextProgress);
+      progressRef.current = normalizedProgress;
+      setProgress(normalizedProgress);
+
+      await saveProgressToStorage(user?.id, normalizedProgress);
+
+      if (user?.id) {
+        try {
+          const apiProgress = normalizeProgress(
+            await saveProgressToApi(normalizedProgress)
+          );
+
+          progressRef.current = apiProgress;
+          setProgress(apiProgress);
+
+          await saveProgressToStorage(user.id, apiProgress);
+        } catch {
+          // Mantém o progresso local se a internet/API falhar.
+          // Na próxima ação, o app tentará sincronizar novamente.
+        }
+      }
     },
     [user?.id]
   );
@@ -242,20 +292,36 @@ export function ProgressProvider({ children }: PropsWithChildren) {
   const loseHeart = useCallback(async () => {
     await updateProgress((currentProgress) => ({
       ...currentProgress,
-      hearts: Math.max(0, currentProgress.hearts - 1)
+      hearts: Math.max(0, currentProgress.hearts - 1),
+      lastPlayedAt: new Date().toISOString()
     }));
   }, [updateProgress]);
 
   const restoreHearts = useCallback(async () => {
     await updateProgress((currentProgress) => ({
       ...currentProgress,
-      hearts: MAX_HEARTS
+      hearts: MAX_HEARTS,
+      lastPlayedAt: new Date().toISOString()
     }));
   }, [updateProgress]);
 
   const resetProgress = useCallback(async () => {
+    if (user?.id) {
+      try {
+        const apiProgress = normalizeProgress(await resetProgressOnApi());
+
+        progressRef.current = apiProgress;
+        setProgress(apiProgress);
+
+        await saveProgressToStorage(user.id, apiProgress);
+        return;
+      } catch {
+        // Se a API falhar, zera localmente.
+      }
+    }
+
     await commitProgress(createDefaultProgress());
-  }, [commitProgress]);
+  }, [commitProgress, user?.id]);
 
   const addXp = useCallback(
     async (amount: number) => {
@@ -287,7 +353,8 @@ export function ProgressProvider({ children }: PropsWithChildren) {
 
       await updateProgress((currentProgress) => ({
         ...currentProgress,
-        badges: addUnique(currentProgress.badges, badge)
+        badges: addUnique(currentProgress.badges, badge),
+        lastPlayedAt: new Date().toISOString()
       }));
     },
     [updateProgress]
@@ -295,7 +362,7 @@ export function ProgressProvider({ children }: PropsWithChildren) {
 
   const currentLessonId = useMemo(() => {
     return getCurrentLessonId(progress.completedLessonIds, orderedLessonIds);
-  }, [progress.completedLessonIds]);
+  }, [progress.completedLessonIds, orderedLessonIds]);
 
   const value = useMemo<ProgressContextValue>(() => {
     return {
