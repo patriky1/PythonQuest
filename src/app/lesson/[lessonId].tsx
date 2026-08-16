@@ -235,7 +235,7 @@ export default function LessonScreen() {
 
         <ScrollView
           style={styles.body}
-          contentContainerStyle={styles.bodyContent}
+          contentContainerStyle={styles.bodyContent} 
           showsVerticalScrollIndicator={false}
         >
           {step.type === 'content' ? (

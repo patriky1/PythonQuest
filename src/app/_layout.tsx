@@ -4,7 +4,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 
-import { AuthGate } from '@/components/auth/AuthGate';
+
 import { AppVideoSplash } from '@/components/app/AppVideoSplash';
 import { AuthProvider } from '@/context/AuthContext';
 import { LearningProvider } from '@/context/LearningContext';
@@ -38,9 +38,15 @@ export default function RootLayout() {
   }
 
   return (
+    
+      
     <AuthProvider>
+      {showVideoSplash ? (
+          <AppVideoSplash onFinish={handleFinishVideoSplash} />
+        ) : null}
+
       <View style={styles.root}>
-        <AuthGate>
+          
           <LearningProvider>
             <ProgressProvider>
               <StatusBar style="dark" />
@@ -105,11 +111,9 @@ export default function RootLayout() {
               </Stack>
             </ProgressProvider>
           </LearningProvider>
-        </AuthGate>
+        
 
-        {showVideoSplash ? (
-          <AppVideoSplash onFinish={handleFinishVideoSplash} />
-        ) : null}
+      
       </View>
     </AuthProvider>
   );
