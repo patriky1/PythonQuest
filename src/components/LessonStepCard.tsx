@@ -1,6 +1,10 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing } from '@/theme/colors';
+import { Ionicons } from '@expo/vector-icons';
+
+import { CodeBlock } from '@/components/CodeBlock';
+import { Tag } from '@/components/Tag';
+import { colors, radius, spacing } from '@/theme/colors';
 
 type LessonStepCardProps = {
   title: string;
@@ -12,18 +16,22 @@ type LessonStepCardProps = {
 export function LessonStepCard({ title, body, analogy, code }: LessonStepCardProps) {
   return (
     <View style={styles.card}>
-      <Text style={styles.badge}>AULA RÁPIDA</Text>
-      <Text style={styles.title}>{title}</Text>
+      <Tag label="Aula rápida" tone="success" icon="book" />
+
+      <Text style={styles.title} accessibilityRole="header">
+        {title}
+      </Text>
       <Text style={styles.body}>{body}</Text>
+
+      {code ? <CodeBlock code={code} label="exemplo.py" style={styles.code} /> : null}
+
       {analogy ? (
         <View style={styles.analogyBox}>
-          <Text style={styles.analogyTitle}>💡 Analogia</Text>
+          <View style={styles.analogyHeader}>
+            <Ionicons name="bulb" size={18} color={colors.accentText} />
+            <Text style={styles.analogyTitle}>Pense assim</Text>
+          </View>
           <Text style={styles.analogyText}>{analogy}</Text>
-        </View>
-      ) : null}
-      {code ? (
-        <View style={styles.codeBox}>
-          <Text style={styles.code}>{code}</Text>
         </View>
       ) : null}
     </View>
@@ -33,55 +41,48 @@ export function LessonStepCard({ title, body, analogy, code }: LessonStepCardPro
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
-    borderRadius: 26,
+    borderRadius: radius.xl,
     padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.border
   },
-  badge: {
-    color: colors.primaryDark,
-    fontSize: 12,
-    fontWeight: '900',
-    marginBottom: spacing.sm
-  },
   title: {
     color: colors.text,
-    fontSize: 25,
-    fontWeight: '900',
-    marginBottom: spacing.md
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '800',
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm
   },
   body: {
-    color: colors.text,
-    fontSize: 16,
-    lineHeight: 24
+    color: colors.textSecondary,
+    fontSize: 17,
+    lineHeight: 26
+  },
+  code: {
+    marginTop: spacing.md
   },
   analogyBox: {
     marginTop: spacing.md,
-    backgroundColor: '#FFF9DB',
-    borderRadius: 18,
+    backgroundColor: '#FFFBEB',
+    borderRadius: radius.md,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: '#FFE066'
+    borderColor: '#FDE68A'
   },
-  analogyTitle: {
-    fontWeight: '900',
-    color: colors.text,
+  analogyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     marginBottom: 4
   },
+  analogyTitle: {
+    fontWeight: '800',
+    color: colors.accentText
+  },
   analogyText: {
-    color: colors.text,
-    lineHeight: 21
-  },
-  codeBox: {
-    marginTop: spacing.md,
-    backgroundColor: colors.codeBg,
-    borderRadius: 18,
-    padding: spacing.md
-  },
-  code: {
-    color: colors.codeText,
-    fontFamily: 'monospace',
-    fontSize: 14,
-    lineHeight: 21
+    color: colors.textSecondary,
+    fontSize: 15,
+    lineHeight: 22
   }
 });

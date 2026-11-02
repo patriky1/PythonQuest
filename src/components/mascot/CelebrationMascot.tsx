@@ -1,321 +1,153 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import {
-  Animated,
-  Easing,
-  StyleSheet,
-  Text,
-  View
-} from 'react-native';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 
-import { colors, spacing } from '@/theme/colors';
+import { colors } from '@/theme/colors';
 
 type CelebrationMascotProps = {
-  title?: string;
-  subtitle?: string;
-  gifSource?: number;
-  allWrong?: boolean;
+  celebrate?: boolean;
 };
 
-const confettiColors = [
-  '#FACC15',
-  '#22C55E',
-  '#3B82F6',
-  '#EF4444',
-  '#A855F7',
-  '#06B6D4'
-];
+const CONFETTI_COLORS = ['#FACC15', '#22C55E', '#3B82F6', '#EF4444', '#A855F7', '#06B6D4'];
+const CONFETTI_COUNT = 14;
+const AREA_HEIGHT = 190;
 
-export function CelebrationMascot({
-  title,
-  subtitle,
-  gifSource,
-  allWrong = false
-}: CelebrationMascotProps) {
-  const mascotScale = useRef(new Animated.Value(0.82)).current;
-  const mascotTranslateY = useRef(new Animated.Value(18)).current;
-  const glowScale = useRef(new Animated.Value(0.85)).current;
-  const glowOpacity = useRef(new Animated.Value(0.35)).current;
+export function CelebrationMascot({ celebrate = true }: CelebrationMascotProps) {
+  const mascotScale = useRef(new Animated.Value(0.8)).current;
+  const glowOpacity = useRef(new Animated.Value(0)).current;
 
-  const titleOpacity = useRef(new Animated.Value(0)).current;
-  const titleTranslateY = useRef(new Animated.Value(14)).current;
-
-  const finalTitle =
-    title ??
-    (allWrong
-      ? 'Você errou todas as questões!'
-      : 'Missão concluída!');
-
-  const confetti = useMemo(() => {
-    return Array.from({ length: 20 }).map((_, index) => ({
-      id: index,
-      x: 16 + ((index * 41) % 280),
-      delay: (index % 7) * 110,
-      color: confettiColors[index % confettiColors.length],
-      fall: new Animated.Value(0),
-      rotate: new Animated.Value(0)
-    }));
-  }, []);
+  const confetti = useMemo(
+    () =>
+      Array.from({ length: CONFETTI_COUNT }, (_, index) => ({
+        id: index,
+        left: `${6 + ((index * 37) % 88)}%` as const,
+        delay: (index % 5) * 120,
+        color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
+        drift: index % 2 === 0 ? 16 : -16,
+        fall: new Animated.Value(0)
+      })),
+    []
+  );
 
   useEffect(() => {
     Animated.parallel([
       Animated.spring(mascotScale, {
         toValue: 1,
-        friction: 6,
+        friction: 5,
         tension: 90,
         useNativeDriver: true
       }),
-
-      Animated.spring(mascotTranslateY, {
-        toValue: 0,
-        friction: 7,
-        tension: 85,
-        useNativeDriver: true
-      }),
-
-      Animated.timing(titleOpacity, {
-        toValue: 1,
-        duration: 420,
-        delay: 250,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true
-      }),
-
-      Animated.timing(titleTranslateY, {
-        toValue: 0,
-        duration: 420,
-        delay: 250,
-        easing: Easing.out(Easing.cubic),
+      Animated.timing(glowOpacity, {
+        toValue: celebrate ? 0.22 : 0.12,
+        duration: 500,
         useNativeDriver: true
       })
     ]).start();
 
-    Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(glowScale, {
-            toValue: 1.16,
-            duration: 900,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: true
-          }),
-          Animated.timing(glowScale, {
-            toValue: 0.86,
-            duration: 900,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: true
-          })
-        ]),
+    if (!celebrate) {
+      return;
+    }
 
-        Animated.sequence([
-          Animated.timing(glowOpacity, {
-            toValue: 0.12,
-            duration: 900,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: true
-          }),
-          Animated.timing(glowOpacity, {
-            toValue: 0.35,
-            duration: 900,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: true
-          })
-        ])
-      ])
+    Animated.stagger(
+      60,
+      confetti.map((piece) =>
+        Animated.timing(piece.fall, {
+          toValue: 1,
+          duration: 1800,
+          delay: piece.delay,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true
+        })
+      )
     ).start();
-
-    confetti.forEach((piece) => {
-      Animated.loop(
-        Animated.parallel([
-          Animated.sequence([
-            Animated.delay(piece.delay),
-            Animated.timing(piece.fall, {
-              toValue: 1,
-              duration: 1900,
-              easing: Easing.out(Easing.cubic),
-              useNativeDriver: true
-            }),
-            Animated.timing(piece.fall, {
-              toValue: 0,
-              duration: 0,
-              useNativeDriver: true
-            })
-          ]),
-
-          Animated.sequence([
-            Animated.delay(piece.delay),
-            Animated.timing(piece.rotate, {
-              toValue: 1,
-              duration: 1900,
-              easing: Easing.linear,
-              useNativeDriver: true
-            }),
-            Animated.timing(piece.rotate, {
-              toValue: 0,
-              duration: 0,
-              useNativeDriver: true
-            })
-          ])
-        ])
-      ).start();
-    });
-  }, [
-    mascotScale,
-    mascotTranslateY,
-    glowScale,
-    glowOpacity,
-    titleOpacity,
-    titleTranslateY,
-    confetti
-  ]);
+  }, [celebrate, confetti, glowOpacity, mascotScale]);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.animationArea}>
-        {confetti.map((piece) => {
-          const translateY = piece.fall.interpolate({
-            inputRange: [0, 1],
-            outputRange: [-35, 220]
-          });
-
-          const translateX = piece.fall.interpolate({
-            inputRange: [0, 0.5, 1],
-            outputRange: [0, piece.id % 2 === 0 ? 18 : -18, 0]
-          });
-
-          const opacity = piece.fall.interpolate({
-            inputRange: [0, 0.1, 0.85, 1],
-            outputRange: [0, 1, 1, 0]
-          });
-
-          const rotation = piece.rotate.interpolate({
-            inputRange: [0, 1],
-            outputRange: ['0deg', '360deg']
-          });
-
-          return (
+    <View style={styles.area} accessible={false} importantForAccessibility="no-hide-descendants">
+      {celebrate
+        ? confetti.map((piece) => (
             <Animated.View
               key={piece.id}
               style={[
                 styles.confetti,
                 {
-                  left: piece.x,
+                  left: piece.left,
                   backgroundColor: piece.color,
-                  opacity,
+                  opacity: piece.fall.interpolate({
+                    inputRange: [0, 0.1, 0.8, 1],
+                    outputRange: [0, 1, 1, 0]
+                  }),
                   transform: [
-                    { translateX },
-                    { translateY },
-                    { rotate: rotation }
+                    {
+                      translateY: piece.fall.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-20, AREA_HEIGHT]
+                      })
+                    },
+                    {
+                      translateX: piece.fall.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0, piece.drift, 0]
+                      })
+                    },
+                    {
+                      rotate: piece.fall.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0deg', '320deg']
+                      })
+                    }
                   ]
                 }
               ]}
             />
-          );
-        })}
-
-        <Animated.View
-          style={[
-            styles.glow,
-            {
-              opacity: glowOpacity,
-              transform: [{ scale: glowScale }]
-            }
-          ]}
-        />
-
-        <Animated.View
-          style={[
-            styles.mascotWrapper,
-            {
-              transform: [
-                { translateY: mascotTranslateY },
-                { scale: mascotScale }
-              ]
-            }
-          ]}
-        >
-          <Image
-            source={
-              gifSource ??
-              require('../../../assets/mascot/snake-celebrate.gif')
-            }
-            style={styles.mascotGif}
-            contentFit="contain"
-            cachePolicy="memory-disk"
-            allowDownscaling={false}
-          />
-        </Animated.View>
-      </View>
+          ))
+        : null}
 
       <Animated.View
         style={[
-          styles.textArea,
+          styles.glow,
           {
-            opacity: titleOpacity,
-            transform: [{ translateY: titleTranslateY }]
+            backgroundColor: celebrate ? colors.primary : colors.secondary,
+            opacity: glowOpacity
           }
         ]}
-      >
-        <Text style={styles.title}>{finalTitle}</Text>
-        
+      />
+
+      <Animated.View style={{ transform: [{ scale: mascotScale }] }}>
+        <Image
+          source={require('../../../assets/mascot/snake-celebrate.gif')}
+          style={styles.mascot}
+          contentFit="contain"
+          cachePolicy="memory-disk"
+        />
       </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    marginBottom: -95
-  },
-  animationArea: {
+  area: {
     width: '100%',
-    height: 230,
+    height: AREA_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden'
   },
   glow: {
     position: 'absolute',
-    width: 215,
-    height: 215,
-    borderRadius: 108,
-    backgroundColor: '#22C55E'
+    width: 170,
+    height: 170,
+    borderRadius: 85
   },
-  mascotWrapper: {
-    width: 130,
-    height: 130,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  mascotGif: {
-    width: 230,
-    height: 230
+  mascot: {
+    width: 190,
+    height: 190
   },
   confetti: {
     position: 'absolute',
-    top: 8,
-    width: 9,
-    height: 16,
+    top: 0,
+    width: 8,
+    height: 14,
     borderRadius: 3
-  },
-  textArea: {
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    bottom: 40
-  },
-  title: {
-    color: colors.text,
-    fontSize: 18,
-    lineHeight: 54,
-    fontWeight: '700',
-    textAlign: 'center',
-    letterSpacing: -0.7
-  },
-  subtitle: {
-    color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center'
   }
 });

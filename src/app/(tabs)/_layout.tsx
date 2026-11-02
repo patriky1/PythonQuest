@@ -1,136 +1,57 @@
-import React from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import React, { ComponentProps } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getBottomSafeArea, TAB_BAR_BASE_HEIGHT } from '@/constants/layout';
 
+import { getBottomSafeArea, TAB_BAR_BASE_HEIGHT } from '@/constants/layout';
 import { colors } from '@/theme/colors';
 
-type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-type TabIconProps = {
-  focused: boolean;
-  icon: IoniconName;
-  activeIcon: IoniconName;
-};
-
-function TabIcon({ focused, icon, activeIcon }: TabIconProps) {
-  return (
-    <View style={[styles.iconBox, focused && styles.iconBoxActive]}>
-      <Ionicons
-        name={focused ? activeIcon : icon}
-        size={22}
-        color={focused ? '#16A34A' : '#8A94A6'}
-      />
-    </View>
-  );
-}
+const TABS: { name: string; title: string; icon: IoniconName; activeIcon: IoniconName }[] = [
+  { name: 'home', title: 'Início', icon: 'home-outline', activeIcon: 'home' },
+  { name: 'learn', title: 'Trilha', icon: 'map-outline', activeIcon: 'map' },
+  { name: 'library', title: 'Biblioteca', icon: 'library-outline', activeIcon: 'library' },
+  { name: 'playground', title: 'Terminal', icon: 'code-slash-outline', activeIcon: 'code-slash' },
+  { name: 'profile', title: 'Perfil', icon: 'person-circle-outline', activeIcon: 'person-circle' }
+];
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
-
   const bottomSafeArea = getBottomSafeArea(insets.bottom);
-const tabBarHeight = TAB_BAR_BASE_HEIGHT + bottomSafeArea;
 
   return (
     <Tabs
       screenOptions={{
-        headerStyle: {
-          backgroundColor: colors.background
-        },
+        headerStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,
-        headerTitleStyle: {
-          color: colors.text,
-          fontWeight: '900'
-        },
-
+        headerTitleStyle: { color: colors.text, fontWeight: '800' },
         tabBarHideOnKeyboard: true,
-
-        tabBarActiveTintColor: '#16A34A',
-        tabBarInactiveTintColor: '#8A94A6',
-
+        tabBarActiveTintColor: colors.primaryDark,
+        tabBarInactiveTintColor: colors.muted,
         tabBarStyle: [
           styles.tabBar,
-          {
-            height: tabBarHeight,
-            paddingBottom: bottomSafeArea
-          }
+          { height: TAB_BAR_BASE_HEIGHT + bottomSafeArea, paddingBottom: bottomSafeArea }
         ],
-
         tabBarItemStyle: styles.tabBarItem,
         tabBarLabelStyle: styles.tabBarLabel
       }}
     >
-      <Tabs.Screen
-        name="home"
-        options={{
-          title: 'Início',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon
-              focused={focused}
-              icon="home-outline"
-              activeIcon="home"
-            />
-          )
-        }}
-      />
-
-      <Tabs.Screen
-        name="learn"
-        options={{
-          title: 'Trilha',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon
-              focused={focused}
-              icon="compass-outline"
-              activeIcon="compass"
-            />
-          )
-        }}
-      />
-
-      <Tabs.Screen
-        name="library"
-        options={{
-          title: 'Biblioteca',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon
-              focused={focused}
-              icon="library-outline"
-              activeIcon="library"
-            />
-          )
-        }}
-      />
-
-      <Tabs.Screen
-        name="playground"
-        options={{
-          title: 'Terminal',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon
-              focused={focused}
-              icon="code-slash-outline"
-              activeIcon="code-slash"
-            />
-          )
-        }}
-      />
-
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Perfil',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon
-              focused={focused}
-              icon="person-circle-outline"
-              activeIcon="person-circle"
-            />
-          )
-        }}
-      />
+      {TABS.map((tab) => (
+        <Tabs.Screen
+          key={tab.name}
+          name={tab.name}
+          options={{
+            title: tab.title,
+            tabBarIcon: ({ focused, color }) => (
+              <View style={[styles.iconBox, focused && styles.iconBoxActive]}>
+                <Ionicons name={focused ? tab.activeIcon : tab.icon} size={22} color={String(color)} />
+              </View>
+            )
+          }}
+        />
+      ))}
     </Tabs>
   );
 }
@@ -141,49 +62,29 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-
     paddingTop: 4,
     paddingHorizontal: 6,
-
     backgroundColor: '#FFFFFF',
-
     borderTopWidth: 1,
-    borderTopColor: '#E8EEF5',
-
-    shadowColor: '#111827',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: {
-      width: 0,
-      height: -6
-    },
-
-    elevation: 14
+    borderTopColor: colors.border,
+    elevation: 12
   },
-
   tabBarItem: {
     height: 52,
-    paddingTop: 0,
-    paddingBottom: 0,
     justifyContent: 'center'
   },
-
   tabBarLabel: {
     fontSize: 11,
-    fontWeight: '900',
-    marginTop: 0,
-    marginBottom: 0
+    fontWeight: '800'
   },
-
   iconBox: {
-    width: 38,
+    width: 44,
     height: 30,
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center'
   },
-
   iconBoxActive: {
-    backgroundColor: '#ECFDF5'
+    backgroundColor: colors.primarySoft
   }
 });

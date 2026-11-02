@@ -1,14 +1,21 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+
+import { colors } from '@/theme/colors';
 
 type AppVideoSplashProps = {
   onFinish: () => void;
 };
 
+const SPLASH_DURATION_MS = 2600;
+const FADE_DURATION_MS = 350;
+
 const splashVideo = require('../../../assets/videos/splash.mp4');
 
 export function AppVideoSplash({ onFinish }: AppVideoSplashProps) {
+  const opacity = useRef(new Animated.Value(1)).current;
+
   const player = useVideoPlayer(splashVideo, (playerInstance) => {
     playerInstance.loop = true;
     playerInstance.muted = true;
@@ -17,16 +24,18 @@ export function AppVideoSplash({ onFinish }: AppVideoSplashProps) {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      onFinish();
-    }, 3200);
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: FADE_DURATION_MS,
+        useNativeDriver: true
+      }).start(() => onFinish());
+    }, SPLASH_DURATION_MS);
 
-    return () => {
-      clearTimeout(timer); 
-    };
-  }, [onFinish]);
+    return () => clearTimeout(timer);
+  }, [onFinish, opacity]);
 
   return (
-    <View style={styles.container}>
+    <Animated.View style={[styles.container, { opacity }]}>
       <VideoView
         style={styles.video}
         player={player}
@@ -38,13 +47,13 @@ export function AppVideoSplash({ onFinish }: AppVideoSplashProps) {
         <Text style={styles.appName}>PythonQuest</Text>
         <Text style={styles.loadingText}>Carregando sua jornada...</Text>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#FFFFFF',
     zIndex: 9999,
     elevation: 9999,
@@ -64,14 +73,14 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   appName: {
-    color: '#111827',
+    color: colors.text,
     fontSize: 24,
     fontWeight: '900',
     letterSpacing: -0.6
   },
   loadingText: {
     marginTop: 8,
-    color: '#6B7280',
+    color: colors.muted,
     fontSize: 14,
     fontWeight: '700'
   }

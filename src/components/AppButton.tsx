@@ -1,76 +1,139 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
-import { colors, spacing } from '@/theme/colors';
+import React, { ComponentProps } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleProp,
+  StyleSheet,
+  Text,
+  View,
+  ViewStyle
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+import { colors, radius, spacing } from '@/theme/colors';
+
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dangerOutline';
 
 type AppButtonProps = {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  variant?: Variant;
+  icon?: ComponentProps<typeof Ionicons>['name'];
   disabled?: boolean;
-  style?: ViewStyle;
+  loading?: boolean;
+  compact?: boolean;
+  style?: StyleProp<ViewStyle>;
 };
 
-export function AppButton({ title, onPress, variant = 'primary', disabled = false, style }: AppButtonProps) {
+const TEXT_COLOR: Record<Variant, string> = {
+  primary: '#FFFFFF',
+  secondary: '#FFFFFF',
+  danger: '#FFFFFF',
+  ghost: colors.textSecondary,
+  dangerOutline: colors.danger
+};
+
+export function AppButton({
+  title,
+  onPress,
+  variant = 'primary',
+  icon,
+  disabled = false,
+  loading = false,
+  compact = false,
+  style
+}: AppButtonProps) {
+  const isDisabled = disabled || loading;
+  const textColor = TEXT_COLOR[variant];
+
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
+      disabled={isDisabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
+        compact && styles.compact,
         styles[variant],
-        disabled && styles.disabled,
-        pressed && !disabled && styles.pressed,
+        isDisabled && styles.disabled,
+        pressed && !isDisabled && styles.pressed,
         style
       ]}
     >
-      <Text style={[styles.text, variant === 'ghost' && styles.ghostText]}>{title}</Text>
+      {loading ? (
+        <ActivityIndicator color={textColor} />
+      ) : (
+        <View style={styles.content}>
+          {icon ? (
+            <Ionicons name={icon} size={compact ? 16 : 19} color={textColor} />
+          ) : null}
+          <Text
+            style={[styles.text, compact && styles.compactText, { color: textColor }]}
+            numberOfLines={1}
+          >
+            {title}
+          </Text>
+        </View>
+      )}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    borderRadius: 18,
-    paddingVertical: spacing.md,
+    minHeight: 52,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2
+    justifyContent: 'center'
+  },
+  compact: {
+    minHeight: 40,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
   },
   primary: {
-    backgroundColor: colors.primary
+    backgroundColor: colors.primary,
+    borderBottomWidth: 3,
+    borderBottomColor: colors.primaryDark
   },
   secondary: {
-    backgroundColor: colors.secondary
-  },
-  ghost: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    elevation: 0,
-    shadowOpacity: 0
+    backgroundColor: colors.secondary,
+    borderBottomWidth: 3,
+    borderBottomColor: colors.secondaryDark
   },
   danger: {
     backgroundColor: colors.danger
   },
+  ghost: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  dangerOutline: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder
+  },
   disabled: {
-    backgroundColor: colors.locked,
-    opacity: 0.75
+    opacity: 0.5
   },
   pressed: {
+    opacity: 0.9,
     transform: [{ scale: 0.98 }]
   },
   text: {
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800'
   },
-  ghostText: {
-    color: colors.primaryDark
+  compactText: {
+    fontSize: 14
   }
 });

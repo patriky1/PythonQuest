@@ -11,31 +11,26 @@ import React, {
 
 import { useAuth } from '@/context/AuthContext';
 import { useLearning } from '@/context/LearningContext';
-
 import { MAX_HEARTS } from '@/features/progress/progress.constants';
-
 import {
   addUnique,
   createBadges,
   createDefaultProgress,
-  getCurrentLessonId,
-  getTodayKey,
+  getActiveStreak,
+  getNextLessonId,
   normalizeProgress,
-  resolveCompleteLessonPayload
+  registerActivity
 } from '@/features/progress/progress.helpers';
-
 import {
   loadProgressFromStorage,
   saveProgressToStorage
 } from '@/features/progress/progress.storage';
-
 import {
-  CompleteLessonInput,
+  CompleteLessonPayload,
   CompleteSpecialMissionPayload,
   ProgressContextValue,
   ProgressState
 } from '@/features/progress/progress.types';
-
 import {
   getProgressFromApi,
   resetProgressOnApi,
@@ -50,17 +45,16 @@ export function ProgressProvider({ children }: PropsWithChildren) {
   const { user } = useAuth();
   const { orderedLessonIds } = useLearning();
 
-  const [progress, setProgress] = useState<ProgressState>(() =>
-    createDefaultProgress()
-  );
-
-  const progressRef = useRef<ProgressState>(createDefaultProgress());
-
+  const [progress, setProgress] = useState<ProgressState>(createDefaultProgress);
   const [isProgressLoading, setIsProgressLoading] = useState(true);
 
-  useEffect(() => {
-    progressRef.current = progress;
-  }, [progress]);
+  const progressRef = useRef<ProgressState>(progress);
+  const saveSequenceRef = useRef(0);
+
+  const applyProgress = useCallback((nextProgress: ProgressState) => {
+    progressRef.current = nextProgress;
+    setProgress(nextProgress);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -72,12 +66,10 @@ export function ProgressProvider({ children }: PropsWithChildren) {
         if (!user?.id) {
           const guestProgress = await loadProgressFromStorage(undefined);
 
-          if (!isMounted) {
-            return;
+          if (isMounted) {
+            applyProgress(guestProgress);
           }
 
-          progressRef.current = guestProgress;
-          setProgress(guestProgress);
           return;
         }
 
@@ -88,19 +80,14 @@ export function ProgressProvider({ children }: PropsWithChildren) {
             return;
           }
 
-          progressRef.current = apiProgress;
-          setProgress(apiProgress);
-
+          applyProgress(apiProgress);
           await saveProgressToStorage(user.id, apiProgress);
         } catch {
           const storedProgress = await loadProgressFromStorage(user.id);
 
-          if (!isMounted) {
-            return;
+          if (isMounted) {
+            applyProgress(storedProgress);
           }
-
-          progressRef.current = storedProgress;
-          setProgress(storedProgress);
         }
       } finally {
         if (isMounted) {
@@ -114,167 +101,69 @@ export function ProgressProvider({ children }: PropsWithChildren) {
     return () => {
       isMounted = false;
     };
-  }, [user?.id]);
+  }, [user?.id, applyProgress]);
+
+  const syncWithApi = useCallback(
+    async (userId: string, localProgress: ProgressState, saveSequence: number) => {
+      try {
+        const apiProgress = normalizeProgress(await saveProgressToApi(localProgress));
+
+        // Ignora respostas antigas para não sobrescrever uma ação mais recente.
+        if (saveSequence !== saveSequenceRef.current) {
+          return;
+        }
+
+        applyProgress(apiProgress);
+        await saveProgressToStorage(userId, apiProgress);
+      } catch {
+        // Sem internet: o progresso fica salvo no aparelho e sincroniza na próxima ação.
+      }
+    },
+    [applyProgress]
+  );
 
   const commitProgress = useCallback(
     async (nextProgress: ProgressState) => {
       const normalizedProgress = normalizeProgress(nextProgress);
+      const saveSequence = ++saveSequenceRef.current;
 
-      progressRef.current = normalizedProgress;
-      setProgress(normalizedProgress);
-
+      applyProgress(normalizedProgress);
       await saveProgressToStorage(user?.id, normalizedProgress);
 
+      // Em segundo plano: a tela não espera o servidor (que pode estar "acordando").
       if (user?.id) {
-        try {
-          const apiProgress = normalizeProgress(
-            await saveProgressToApi(normalizedProgress)
-          );
-
-          progressRef.current = apiProgress;
-          setProgress(apiProgress);
-
-          await saveProgressToStorage(user.id, apiProgress);
-        } catch {
-          // Mantém o progresso local se a internet/API falhar.
-          // Na próxima ação, o app tentará sincronizar novamente.
-        }
+        syncWithApi(user.id, normalizedProgress, saveSequence);
       }
     },
-    [user?.id]
+    [user?.id, applyProgress, syncWithApi]
   );
 
   const updateProgress = useCallback(
     async (updater: (current: ProgressState) => ProgressState) => {
-      const currentProgress = progressRef.current;
-      const nextProgress = updater(currentProgress);
-
-      await commitProgress(nextProgress);
+      await commitProgress(updater(progressRef.current));
     },
     [commitProgress]
   );
 
   const completeLesson = useCallback(
-    async (
-      lessonOrPayload: CompleteLessonInput,
-      xpReward = 0,
-      badge?: string
-    ) => {
-      const payload = resolveCompleteLessonPayload(
-        lessonOrPayload,
-        xpReward,
-        badge
-      );
-
-      if (!payload.lessonId) {
-        return;
-      }
-
-      await updateProgress((currentProgress) => {
-        const alreadyCompleted =
-          currentProgress.completedLessonIds.includes(payload.lessonId);
-
-        if (alreadyCompleted) {
-          return currentProgress;
-        }
-
-        const today = getTodayKey();
-
-        const nextCompletedLessonIds = addUnique(
-          currentProgress.completedLessonIds,
-          payload.lessonId
-        );
-
-        const nextProgressBase: ProgressState = {
-          ...currentProgress,
-          xp: currentProgress.xp + (payload.earnedXp || 0),
-          hearts: MAX_HEARTS,
-          completedLessonIds: nextCompletedLessonIds,
-          streak:
-            currentProgress.lastActivityDate === today
-              ? currentProgress.streak
-              : currentProgress.streak + 1,
-          lastActivityDate: today,
-          lastPlayedAt: new Date().toISOString()
-        };
-
-        let nextBadges = createBadges(nextProgressBase);
-
-        if (payload.badge) {
-          nextBadges = addUnique(nextBadges, payload.badge);
-        }
-
-        return {
-          ...nextProgressBase,
-          badges: nextBadges
-        };
-      });
-    },
-    [updateProgress]
-  );
-
-  const markLessonCompleted = useCallback(
-    async (
-      lessonOrPayload: CompleteLessonInput,
-      xpReward = 0,
-      badge?: string
-    ) => {
-      await completeLesson(lessonOrPayload, xpReward, badge);
-    },
-    [completeLesson]
-  );
-
-  const completeSpecialMission = useCallback(
-    async (payload: CompleteSpecialMissionPayload) => {
-      if (!payload.missionId) {
-        return 0;
-      }
-
+    async ({ lessonId, earnedXp }: CompleteLessonPayload) => {
       let awardedXp = 0;
 
-      await updateProgress((currentProgress) => {
-        const alreadyCompleted =
-          currentProgress.completedSpecialMissionIds.includes(
-            payload.missionId
-          );
-
-        if (alreadyCompleted) {
-          awardedXp = 0;
-          return currentProgress;
+      await updateProgress((current) => {
+        if (current.completedLessonIds.includes(lessonId)) {
+          return registerActivity(current);
         }
 
-        const today = getTodayKey();
+        awardedXp = earnedXp;
 
-        awardedXp = payload.earnedXp || 0;
-
-        const nextCompletedSpecialMissionIds = addUnique(
-          currentProgress.completedSpecialMissionIds,
-          payload.missionId
-        );
-
-        const nextProgressBase: ProgressState = {
-          ...currentProgress,
-          xp: currentProgress.xp + awardedXp,
+        const next: ProgressState = {
+          ...registerActivity(current),
+          xp: current.xp + earnedXp,
           hearts: MAX_HEARTS,
-          completedSpecialMissionIds: nextCompletedSpecialMissionIds,
-          streak:
-            currentProgress.lastActivityDate === today
-              ? currentProgress.streak
-              : currentProgress.streak + 1,
-          lastActivityDate: today,
-          lastPlayedAt: new Date().toISOString()
+          completedLessonIds: addUnique(current.completedLessonIds, lessonId)
         };
 
-        let nextBadges = createBadges(nextProgressBase);
-
-        if (payload.badge) {
-          nextBadges = addUnique(nextBadges, payload.badge);
-        }
-
-        return {
-          ...nextProgressBase,
-          badges: nextBadges
-        };
+        return { ...next, badges: createBadges(next) };
       });
 
       return awardedXp;
@@ -282,24 +171,48 @@ export function ProgressProvider({ children }: PropsWithChildren) {
     [updateProgress]
   );
 
-  const isSpecialMissionCompleted = useCallback(
-    (missionId: string) => {
-      return progress.completedSpecialMissionIds.includes(missionId);
+  const completeSpecialMission = useCallback(
+    async ({ missionId, earnedXp, badge }: CompleteSpecialMissionPayload) => {
+      let awardedXp = 0;
+
+      await updateProgress((current) => {
+        if (current.completedSpecialMissionIds.includes(missionId)) {
+          return registerActivity(current);
+        }
+
+        awardedXp = earnedXp;
+
+        const next: ProgressState = {
+          ...registerActivity(current),
+          xp: current.xp + earnedXp,
+          hearts: MAX_HEARTS,
+          completedSpecialMissionIds: addUnique(
+            current.completedSpecialMissionIds,
+            missionId
+          )
+        };
+
+        const badges = createBadges(next);
+
+        return { ...next, badges: badge ? addUnique(badges, badge) : badges };
+      });
+
+      return awardedXp;
     },
-    [progress.completedSpecialMissionIds]
+    [updateProgress]
   );
 
   const loseHeart = useCallback(async () => {
-    await updateProgress((currentProgress) => ({
-      ...currentProgress,
-      hearts: Math.max(0, currentProgress.hearts - 1),
+    await updateProgress((current) => ({
+      ...current,
+      hearts: Math.max(0, current.hearts - 1),
       lastPlayedAt: new Date().toISOString()
     }));
   }, [updateProgress]);
 
   const restoreHearts = useCallback(async () => {
-    await updateProgress((currentProgress) => ({
-      ...currentProgress,
+    await updateProgress((current) => ({
+      ...current,
       hearts: MAX_HEARTS,
       lastPlayedAt: new Date().toISOString()
     }));
@@ -310,9 +223,7 @@ export function ProgressProvider({ children }: PropsWithChildren) {
       try {
         const apiProgress = normalizeProgress(await resetProgressOnApi());
 
-        progressRef.current = apiProgress;
-        setProgress(apiProgress);
-
+        applyProgress(apiProgress);
         await saveProgressToStorage(user.id, apiProgress);
         return;
       } catch {
@@ -321,80 +232,56 @@ export function ProgressProvider({ children }: PropsWithChildren) {
     }
 
     await commitProgress(createDefaultProgress());
-  }, [commitProgress, user?.id]);
+  }, [commitProgress, applyProgress, user?.id]);
 
   const addXp = useCallback(
     async (amount: number) => {
-      if (!amount || amount <= 0) {
+      if (amount <= 0) {
         return;
       }
 
-      await updateProgress((currentProgress) => {
-        const nextProgressBase: ProgressState = {
-          ...currentProgress,
-          xp: currentProgress.xp + amount,
-          lastPlayedAt: new Date().toISOString()
+      await updateProgress((current) => {
+        const next: ProgressState = {
+          ...registerActivity(current),
+          xp: current.xp + amount
         };
 
-        return {
-          ...nextProgressBase,
-          badges: createBadges(nextProgressBase)
-        };
+        return { ...next, badges: createBadges(next) };
       });
     },
     [updateProgress]
   );
 
-  const addBadge = useCallback(
-    async (badge: string) => {
-      if (!badge) {
-        return;
-      }
-
-      await updateProgress((currentProgress) => ({
-        ...currentProgress,
-        badges: addUnique(currentProgress.badges, badge),
-        lastPlayedAt: new Date().toISOString()
-      }));
-    },
-    [updateProgress]
+  const nextLessonId = useMemo(
+    () => getNextLessonId(progress.completedLessonIds, orderedLessonIds),
+    [progress.completedLessonIds, orderedLessonIds]
   );
 
-  const currentLessonId = useMemo(() => {
-    return getCurrentLessonId(progress.completedLessonIds, orderedLessonIds);
-  }, [progress.completedLessonIds, orderedLessonIds]);
-
-  const value = useMemo<ProgressContextValue>(() => {
-    return {
+  const value = useMemo<ProgressContextValue>(
+    () => ({
       progress,
-      hydrated: !isProgressLoading,
-      isLoading: isProgressLoading,
+      activeStreak: getActiveStreak(progress),
       isProgressLoading,
-      currentLessonId,
+      nextLessonId,
       completeLesson,
-      markLessonCompleted,
       completeSpecialMission,
-      isSpecialMissionCompleted,
       loseHeart,
       restoreHearts,
       resetProgress,
-      addXp,
-      addBadge
-    };
-  }, [
-    progress,
-    isProgressLoading,
-    currentLessonId,
-    completeLesson,
-    markLessonCompleted,
-    completeSpecialMission,
-    isSpecialMissionCompleted,
-    loseHeart,
-    restoreHearts,
-    resetProgress,
-    addXp,
-    addBadge
-  ]);
+      addXp
+    }),
+    [
+      progress,
+      isProgressLoading,
+      nextLessonId,
+      completeLesson,
+      completeSpecialMission,
+      loseHeart,
+      restoreHearts,
+      resetProgress,
+      addXp
+    ]
+  );
 
   return (
     <ProgressContext.Provider value={value}>

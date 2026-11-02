@@ -5,10 +5,6 @@ export type User = {
   createdAt: string;
 };
 
-export type StoredUser = User & {
-  password: string;
-};
-
 export type SignInPayload = {
   email: string;
   password: string;

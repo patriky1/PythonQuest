@@ -3,18 +3,10 @@ export type AdventurePosition = {
   col: number;
 };
 
-export type AdventureCommand =
-  | 'moveRight'
-  | 'moveLeft'
-  | 'moveUp'
-  | 'moveDown'
-  | 'collect'
-  | 'attack';
-
 export type AdventureMission = {
   id: string;
   title: string;
-  description: string;
+  subtitle: string;
   xp: number;
   badge?: string;
   initialCode: string;

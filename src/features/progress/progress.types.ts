@@ -11,54 +11,29 @@ export type ProgressState = {
 
 export type CompleteLessonPayload = {
   lessonId: string;
-  earnedXp?: number;
-  badge?: string;
+  earnedXp: number;
 };
 
 export type CompleteSpecialMissionPayload = {
   missionId: string;
-  earnedXp?: number;
+  earnedXp: number;
   badge?: string;
 };
 
-export type LessonLike = {
-  id: string;
-  xp?: number;
-};
-
-export type CompleteLessonInput =
-  | string
-  | LessonLike
-  | CompleteLessonPayload;
-
 export type ProgressContextValue = {
   progress: ProgressState;
-  hydrated: boolean;
-  isLoading: boolean;
+  activeStreak: number;
   isProgressLoading: boolean;
-  currentLessonId: string;
+  nextLessonId: string | undefined;
 
-  completeLesson: (
-    lessonOrPayload: CompleteLessonInput,
-    xpReward?: number,
-    badge?: string
-  ) => Promise<void>;
-
-  markLessonCompleted: (
-    lessonOrPayload: CompleteLessonInput,
-    xpReward?: number,
-    badge?: string
-  ) => Promise<void>;
-
+  // Retornam o XP realmente concedido (0 se a missão já tinha sido concluída).
+  completeLesson: (payload: CompleteLessonPayload) => Promise<number>;
   completeSpecialMission: (
     payload: CompleteSpecialMissionPayload
   ) => Promise<number>;
-
-  isSpecialMissionCompleted: (missionId: string) => boolean;
 
   loseHeart: () => Promise<void>;
   restoreHearts: () => Promise<void>;
   resetProgress: () => Promise<void>;
   addXp: (amount: number) => Promise<void>;
-  addBadge: (badge: string) => Promise<void>;
 };

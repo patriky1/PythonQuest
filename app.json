@@ -6,7 +6,7 @@
     "scheme": "pythonquest",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "#F6F6F6",
+    "userInterfaceStyle": "light",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -29,20 +29,21 @@
         {
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 180,
-          "resizeMode": "contain"
-          
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF"
         }
       ],
       "expo-image",
-        [
-    "expo-navigation-bar",
-    {
-      "visibility": "hidden",
-      "barStyle": "light",
-      "enforceContrast": false
-    }
-  ],
-      "expo-video"
+      [
+        "expo-navigation-bar",
+        {
+          "hidden": true,
+          "style": "light",
+          "enforceContrast": false
+        }
+      ],
+      "expo-video",
+      "expo-font"
     ],
     "web": {
       "bundler": "metro"

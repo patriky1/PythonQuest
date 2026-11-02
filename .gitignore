@@ -1,3 +1,10 @@
+# Dependências e caches locais
+node_modules/
+.expo/
+.idea/
+.vscode/
+*.log
+
 # Metro / React Native
 .metro-cache/
 .haste/

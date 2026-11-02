@@ -1,13 +1,14 @@
 import React, {
   createContext,
   PropsWithChildren,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useState
 } from 'react';
 
-import { getCurriculumFromApi } from '@/services/learningApi';
+import { CurriculumResponse, getCurriculumFromApi } from '@/services/learningApi';
 import { Lesson, Topic } from '@/types/course';
 
 type LearningContextValue = {
@@ -20,61 +21,51 @@ type LearningContextValue = {
   reloadLearning: () => Promise<void>;
 };
 
+const EMPTY_CURRICULUM: CurriculumResponse = {
+  topics: [],
+  lessons: [],
+  orderedLessonIds: [],
+  lessonMap: {}
+};
+
 const LearningContext = createContext<LearningContextValue | null>(null);
 
 export function LearningProvider({ children }: PropsWithChildren) {
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [orderedLessonIds, setOrderedLessonIds] = useState<string[]>([]);
-  const [lessonMap, setLessonMap] = useState<Record<string, Lesson>>({});
+  const [curriculum, setCurriculum] =
+    useState<CurriculumResponse>(EMPTY_CURRICULUM);
   const [isLearningLoading, setIsLearningLoading] = useState(true);
   const [learningError, setLearningError] = useState<string | null>(null);
 
-  async function loadLearning() {
+  const loadLearning = useCallback(async () => {
     setIsLearningLoading(true);
     setLearningError(null);
 
     try {
-      const curriculum = await getCurriculumFromApi();
-
-      setTopics(curriculum.topics);
-      setLessons(curriculum.lessons);
-      setOrderedLessonIds(curriculum.orderedLessonIds);
-      setLessonMap(curriculum.lessonMap);
+      setCurriculum(await getCurriculumFromApi());
     } catch (error) {
-      const message =
+      setLearningError(
         error instanceof Error
           ? error.message
-          : 'Não foi possível carregar as missões.';
-
-      setLearningError(message);
+          : 'Não foi possível carregar as missões.'
+      );
     } finally {
       setIsLearningLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     loadLearning();
-  }, []);
+  }, [loadLearning]);
 
-  const value = useMemo<LearningContextValue>(() => {
-    return {
-      topics,
-      lessons,
-      orderedLessonIds,
-      lessonMap,
+  const value = useMemo<LearningContextValue>(
+    () => ({
+      ...curriculum,
       isLearningLoading,
       learningError,
       reloadLearning: loadLearning
-    };
-  }, [
-    topics,
-    lessons,
-    orderedLessonIds,
-    lessonMap,
-    isLearningLoading,
-    learningError
-  ]);
+    }),
+    [curriculum, isLearningLoading, learningError, loadLearning]
+  );
 
   return (
     <LearningContext.Provider value={value}>

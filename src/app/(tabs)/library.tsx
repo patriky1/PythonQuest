@@ -1,152 +1,182 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { memo, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
+import { CodeBlock } from '@/components/CodeBlock';
+import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
+import { SectionHeader } from '@/components/SectionHeader';
+import { LearningErrorView, LearningLoadingView } from '@/components/StateView';
+import { GLOSSARY, GlossaryTerm } from '@/constants/glossary';
 import { useLearning } from '@/context/LearningContext';
-import { colors, spacing } from '@/theme/colors';
+import { useTopicProgress } from '@/features/progress/useTopicProgress';
+import { colors, radius, spacing } from '@/theme/colors';
 
-const glossary = [
-  { term: 'Variável', description: 'Nome usado para guardar um valor.' },
-  { term: 'String', description: 'Texto em Python, geralmente escrito entre aspas.' },
-  { term: 'int', description: 'Número inteiro, como 1, 20 ou 300.' },
-  { term: 'float', description: 'Número decimal. Em Python, usa ponto: 19.90.' },
-  { term: 'bool', description: 'Valor lógico: True ou False.' },
-  { term: 'f-string', description: 'Forma prática de montar mensagens com variáveis usando f antes das aspas.' },
-  { term: 'Operador aritmético', description: 'Símbolo usado em cálculos, como +, -, * e /.' },
-  { term: 'Operador de comparação', description: 'Símbolo que compara valores e retorna True ou False, como ==, != e >=.' },
-  { term: 'Atribuição', description: 'Uso do sinal = para guardar um valor em uma variável.' },
-  { term: 'Média ponderada', description: 'Média em que cada valor pode ter um peso diferente.' },
-  { term: 'if', description: 'Estrutura usada para tomar decisões.' },
-  { term: 'for', description: 'Estrutura usada para repetir um bloco de código.' },
-  { term: 'função', description: 'Bloco de código reutilizável que executa uma tarefa.' }
-];
+function normalize(text: string) {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
+const GlossaryCard = memo(function GlossaryCard({ item }: { item: GlossaryTerm }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ expanded }}
+      accessibilityHint="Mostra um exemplo de código"
+      onPress={() => setExpanded((current) => !current)}
+      style={styles.glossaryCard}
+    >
+      <View style={styles.glossaryHeader}>
+        <Text style={styles.term}>{item.term}</Text>
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={18}
+          color={colors.muted}
+        />
+      </View>
+      <Text style={styles.description}>{item.description}</Text>
+      {expanded ? <CodeBlock code={item.example} style={styles.example} /> : null}
+    </Pressable>
+  );
+});
 
 export default function LibraryScreen() {
-  const {
-    topics,
-    isLearningLoading,
-    learningError,
-    reloadLearning
-  } = useLearning();
+  const { isLearningLoading, learningError, reloadLearning } = useLearning();
+  const topics = useTopicProgress();
+  const [search, setSearch] = useState('');
 
-  if (isLearningLoading) {
-    return (
-      <Screen>
-        <View style={styles.centerState}>
-          <Text style={styles.centerEmoji}>📚</Text>
-          <Text style={styles.centerTitle}>Carregando biblioteca...</Text>
-          <Text style={styles.centerText}>
-            Buscando os tópicos do curso no servidor.
-          </Text>
-        </View>
-      </Screen>
+  const filteredGlossary = useMemo(() => {
+    const query = normalize(search.trim());
+
+    if (!query) {
+      return GLOSSARY;
+    }
+
+    return GLOSSARY.filter((item) =>
+      normalize(`${item.term} ${item.description}`).includes(query)
     );
-  }
-
-  if (learningError) {
-    return (
-      <Screen>
-        <View style={styles.centerState}>
-          <Text style={styles.centerEmoji}>⚠️</Text>
-          <Text style={styles.centerTitle}>Não foi possível carregar</Text>
-          <Text style={styles.centerText}>{learningError}</Text>
-
-          <Pressable style={styles.retryButton} onPress={reloadLearning}>
-            <Text style={styles.retryButtonText}>Tentar novamente</Text>
-          </Pressable>
-        </View>
-      </Screen>
-    );
-  }
+  }, [search]);
 
   return (
     <Screen>
-      <Text style={styles.title}>Biblioteca</Text>
+      <SectionHeader title="Glossário Python" subtitle="Toque em um termo para ver o exemplo" />
 
-      <Text style={styles.subtitle}>
-        Resumo dos tópicos e glossário rápido para revisão.
-      </Text>
+      <View style={styles.searchBox}>
+        <Ionicons name="search" size={18} color={colors.muted} />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Buscar: lista, while, f-string..."
+          placeholderTextColor={colors.muted}
+          style={styles.searchInput}
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+          accessibilityLabel="Buscar no glossário"
+        />
+        {search ? (
+          <Pressable onPress={() => setSearch('')} hitSlop={12} accessibilityLabel="Limpar busca">
+            <Ionicons name="close-circle" size={18} color={colors.muted} />
+          </Pressable>
+        ) : null}
+      </View>
 
-      <Text style={styles.sectionTitle}>Tópicos do curso</Text>
+      {filteredGlossary.length === 0 ? (
+        <Text style={styles.emptySearch}>
+          Nenhum termo encontrado. Tente outra palavra, como variável, for ou função.
+        </Text>
+      ) : (
+        filteredGlossary.map((item) => <GlossaryCard key={item.term} item={item} />)
+      )}
+
+      <SectionHeader title="Módulos do curso" subtitle="Resumo do que você vai aprender" />
+
+      {isLearningLoading && topics.length === 0 ? <LearningLoadingView /> : null}
+      {learningError && topics.length === 0 ? (
+        <LearningErrorView message={learningError} onRetry={reloadLearning} />
+      ) : null}
 
       {topics.map((topic) => (
-        <View key={topic.id} style={styles.topicCard}>
-          <Text style={styles.topicEmoji}>{topic.emoji}</Text>
+        <Pressable
+          key={topic.id}
+          accessibilityRole="button"
+          onPress={() => router.push('/learn')}
+          style={({ pressed }) => [styles.topicCard, pressed && styles.pressed]}
+        >
+          <View style={[styles.topicIcon, { backgroundColor: `${topic.color}22` }]}>
+            <Text style={styles.topicEmoji}>{topic.emoji}</Text>
+          </View>
 
           <View style={styles.topicInfo}>
             <Text style={styles.topicTitle}>{topic.title}</Text>
             <Text style={styles.topicDescription}>{topic.description}</Text>
+            <View style={styles.topicProgress}>
+              <ProgressBar value={topic.percent} height={6} color={topic.color} />
+            </View>
           </View>
-        </View>
-      ))}
-
-      <Text style={styles.sectionTitle}>Glossário rápido</Text>
-
-      {glossary.map((item) => (
-        <View key={item.term} style={styles.glossaryCard}>
-          <Text style={styles.term}>{item.term}</Text>
-          <Text style={styles.description}>{item.description}</Text>
-        </View>
+        </Pressable>
       ))}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  centerState: {
-    flex: 1,
-    minHeight: 500,
+  searchBox: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg
-  },
-  centerEmoji: {
-    fontSize: 48,
+    gap: spacing.sm,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    minHeight: 50,
     marginBottom: spacing.md
   },
-  centerTitle: {
+  searchInput: {
+    flex: 1,
     color: colors.text,
-    fontSize: 22,
-    fontWeight: '900',
-    textAlign: 'center'
+    fontSize: 16,
+    paddingVertical: 10
   },
-  centerText: {
+  emptySearch: {
     color: colors.muted,
     fontSize: 15,
     lineHeight: 22,
     textAlign: 'center',
-    marginTop: spacing.sm
+    paddingVertical: spacing.lg
   },
-  retryButton: {
-    backgroundColor: '#16A34A',
-    borderRadius: 16,
-    paddingHorizontal: 22,
-    paddingVertical: 13,
-    marginTop: spacing.lg
+  glossaryCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.sm
   },
-  retryButtonText: {
-    color: '#FFFFFF',
+  glossaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4
+  },
+  term: {
+    color: colors.primaryDark,
+    fontWeight: '800',
+    fontSize: 16
+  },
+  description: {
+    color: colors.textSecondary,
     fontSize: 15,
-    fontWeight: '900'
+    lineHeight: 21
   },
-  title: {
-    color: colors.text,
-    fontSize: 30,
-    fontWeight: '900',
-    marginBottom: spacing.xs
-  },
-  subtitle: {
-    color: colors.muted,
-    fontSize: 16,
-    lineHeight: 23,
-    marginBottom: spacing.lg
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '900',
-    marginTop: spacing.md,
-    marginBottom: spacing.md
+  example: {
+    marginTop: spacing.sm
   },
   topicCard: {
     flexDirection: 'row',
@@ -154,43 +184,39 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 22,
+    borderRadius: radius.lg,
     padding: spacing.md,
     gap: spacing.md,
     marginBottom: spacing.sm
   },
+  topicIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   topicEmoji: {
-    fontSize: 30
+    fontSize: 26
   },
   topicInfo: {
     flex: 1
   },
   topicTitle: {
     color: colors.text,
-    fontSize: 17,
-    fontWeight: '900'
+    fontSize: 16,
+    fontWeight: '800'
   },
   topicDescription: {
     color: colors.muted,
+    fontSize: 14,
     lineHeight: 20,
-    marginTop: 3
+    marginTop: 2
   },
-  glossaryCard: {
-    backgroundColor: colors.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    marginBottom: spacing.sm
+  topicProgress: {
+    marginTop: spacing.sm
   },
-  term: {
-    color: colors.primaryDark,
-    fontWeight: '900',
-    fontSize: 16,
-    marginBottom: 4
-  },
-  description: {
-    color: colors.text,
-    lineHeight: 20
+  pressed: {
+    opacity: 0.9
   }
 });

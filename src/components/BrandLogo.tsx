@@ -1,6 +1,8 @@
 import React from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
+import { colors, shadow } from '@/theme/colors';
+
 type BrandLogoProps = {
   size?: number;
   showText?: boolean;
@@ -12,23 +14,14 @@ export function BrandLogo({ size = 76, showText = true }: BrandLogoProps) {
       <View
         style={[
           styles.logoBox,
-          {
-            width: size,
-            height: size,
-            borderRadius: Math.round(size * 0.32)
-          }
+          { width: size, height: size, borderRadius: Math.round(size * 0.3) }
         ]}
       >
         <Image
           source={require('../../assets/images/logo.png')}
-          style={[
-            styles.logoImage,
-            {
-              width: Math.round(size * 0.72),
-              height: Math.round(size * 0.72)
-            }
-          ]}
+          style={{ width: Math.round(size * 0.78), height: Math.round(size * 0.78) }}
           resizeMode="contain"
+          accessibilityIgnoresInvertColors
         />
       </View>
 
@@ -42,24 +35,15 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   logoBox: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#111827',
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: {
-      width: 0,
-      height: 10
-    },
-    elevation: 6
-  },
-  logoImage: {
-    borderRadius: 18
+    overflow: 'hidden',
+    ...shadow.raised
   },
   appName: {
-    marginTop: 16,
-    color: '#111827',
+    marginTop: 14,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '900',
     letterSpacing: 0.4

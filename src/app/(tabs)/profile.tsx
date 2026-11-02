@@ -1,647 +1,362 @@
 import React, { useMemo } from 'react';
-import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View
-} from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
+import { AppButton } from '@/components/AppButton';
+import { LevelProgress } from '@/components/LevelProgress';
 import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
-
+import { SectionHeader } from '@/components/SectionHeader';
+import { StatCard } from '@/components/StatCard';
 import { useAuth } from '@/context/AuthContext';
 import { useLearning } from '@/context/LearningContext';
-import { useProgress } from '@/store/progressStore';
-
-import { colors, spacing } from '@/theme/colors';
+import { useProgress } from '@/features/progress/ProgressContext';
+import { BADGES } from '@/features/progress/progress.constants';
+import { getBadgeMetricValue, toPercent } from '@/features/progress/progress.helpers';
+import { colors, radius, shadow, spacing } from '@/theme/colors';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
-  const { progress, resetProgress, restoreHearts } = useProgress();
-
-  const {
-    lessons,
-    isLearningLoading,
-    learningError,
-    reloadLearning
-  } = useLearning();
+  const { progress, activeStreak, resetProgress } = useProgress();
+  const { lessons } = useLearning();
 
   const completedLessons = progress.completedLessonIds.length;
-  const totalLessons = lessons.length;
+  const trackPercent = toPercent(completedLessons, lessons.length);
 
-  const percent =
-    totalLessons === 0
-      ? 0
-      : Math.round((completedLessons / totalLessons) * 100);
+  const achievements = useMemo(
+    () =>
+      BADGES.map((badge) => {
+        const value = Math.min(getBadgeMetricValue(progress, badge), badge.target);
 
-  const nextBadgeHint = useMemo(() => {
-    if (completedLessons === 0) {
-      return 'Conclua sua primeira missão para liberar a primeira medalha.';
-    }
+        return {
+          ...badge,
+          value,
+          unlocked: progress.badges.includes(badge.id) || value >= badge.target
+        };
+      }).sort((a, b) => Number(b.unlocked) - Number(a.unlocked)),
+    [progress]
+  );
 
-    if (completedLessons < 5) {
-      return `Faltam ${5 - completedLessons} missões para a medalha Explorador Python.`;
-    }
+  const adventureBadges = useMemo(() => {
+    const catalogIds = new Set(BADGES.map((badge) => badge.id));
+    return progress.badges.filter((badge) => !catalogIds.has(badge));
+  }, [progress.badges]);
 
-    if (completedLessons < 10) {
-      return `Faltam ${10 - completedLessons} missões para a medalha Aventureiro do Código.`;
-    }
-
-    return 'Continue praticando para manter sua evolução ativa.';
-  }, [completedLessons]);
+  const unlockedCount = achievements.filter((item) => item.unlocked).length;
 
   function confirmReset() {
     Alert.alert(
       'Zerar progresso?',
-      'Essa ação remove XP, medalhas, corações e lições concluídas desta conta neste aparelho.',
+      user
+        ? 'Isso apaga XP, medalhas e missões concluídas da sua conta. Não dá para desfazer.'
+        : 'Isso apaga XP, medalhas e missões concluídas deste aparelho. Não dá para desfazer.',
       [
-        {
-          text: 'Cancelar',
-          style: 'cancel'
-        },
-        {
-          text: 'Zerar progresso',
-          style: 'destructive',
-          onPress: resetProgress
-        }
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Zerar progresso', style: 'destructive', onPress: resetProgress }
       ]
     );
   }
 
   function confirmLogout() {
-    Alert.alert(
-      'Sair da conta?',
-      'Você voltará para a tela de login.',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel'
-        },
-        {
-          text: 'Sair',
-          style: 'destructive',
-          onPress: handleLogout
+    Alert.alert('Sair da conta?', 'Seu progresso fica salvo na nuvem.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Sair',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut();
+          router.replace('/auth/login');
         }
-      ]
-    );
-  }
-
-  async function handleLogout() {
-    await signOut();
-    router.replace('/auth/login');
-  }
-
-  function openPlayground() {
-    router.push('/(tabs)/playground');
-  }
-
-  if (isLearningLoading) {
-    return (
-      <Screen>
-        <View style={styles.centerState}>
-          <Text style={styles.centerEmoji}>🐍</Text>
-          <Text style={styles.centerTitle}>Carregando perfil...</Text>
-          <Text style={styles.centerText}>
-            Buscando dados da trilha no servidor.
-          </Text>
-        </View>
-      </Screen>
-    );
-  }
-
-  if (learningError) {
-    return (
-      <Screen>
-        <View style={styles.centerState}>
-          <Text style={styles.centerEmoji}>⚠️</Text>
-          <Text style={styles.centerTitle}>Não foi possível carregar</Text>
-          <Text style={styles.centerText}>{learningError}</Text>
-
-          <Pressable style={styles.retryButton} onPress={reloadLearning}>
-            <Text style={styles.retryButtonText}>Tentar novamente</Text>
-          </Pressable>
-        </View>
-      </Screen>
-    );
+      }
+    ]);
   }
 
   return (
     <Screen>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={styles.headerCard}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>
-              {user?.name ? user.name.slice(0, 1).toUpperCase() : 'P'}
-            </Text>
-          </View>
-
-          <View style={styles.headerTextArea}>
-            <Text style={styles.profileLabel}>Perfil do aluno</Text>
-            <Text style={styles.profileName}>
-              {user?.name || 'Aprendiz Python'}
-            </Text>
-            <Text style={styles.profileEmail}>
-              {user?.email || 'Conta conectada'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.levelCard}>
-          <View style={styles.levelHeader}>
-            <View>
-              <Text style={styles.levelLabel}>Progresso geral</Text>
-              <Text style={styles.levelTitle}>
-                {percent}% da trilha concluída
-              </Text>
-            </View>
-
-            <View style={styles.levelBadge}>
-              <Text style={styles.levelBadgeText}>{completedLessons}</Text>
-            </View>
-          </View>
-
-          <ProgressBar value={percent} />
-
-          <Text style={styles.levelHint}>
-            {completedLessons} de {totalLessons} missões concluídas
-          </Text>
-        </View>
-
-        <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <Text style={styles.statIcon}>⚡</Text>
-            <Text style={styles.statValue}>{progress.xp}</Text>
-            <Text style={styles.statLabel}>XP total</Text>
-          </View>
-
-          <View style={styles.statCard}>
-            <Text style={styles.statIcon}>🔥</Text>
-            <Text style={styles.statValue}>{progress.streak}</Text>
-            <Text style={styles.statLabel}>Sequência</Text>
-          </View>
-
-          <View style={styles.statCard}>
-            <Text style={styles.statIcon}>❤️</Text>
-            <Text style={styles.statValue}>{progress.hearts}</Text>
-            <Text style={styles.statLabel}>Corações</Text>
-          </View>
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Medalhas</Text>
-          <Text style={styles.sectionSubtitle}>
-            Conquistas liberadas durante a trilha
-          </Text>
-        </View>
-
-        <View style={styles.card}>
-          {progress.badges.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>🏆</Text>
-              <Text style={styles.emptyTitle}>Nenhuma medalha ainda</Text>
-              <Text style={styles.emptyText}>{nextBadgeHint}</Text>
-            </View>
+      <View style={styles.headerCard}>
+        <View style={styles.avatar}>
+          {user?.name ? (
+            <Text style={styles.avatarText}>{user.name.slice(0, 1).toUpperCase()}</Text>
           ) : (
-            <>
-              <View style={styles.badgesList}>
-                {progress.badges.map((badge) => (
-                  <View key={badge} style={styles.badgeItem}>
-                    <View style={styles.badgeIconBox}>
-                      <Text style={styles.badgeIcon}>🏆</Text>
-                    </View>
-
-                    <View style={styles.badgeTextArea}>
-                      <Text style={styles.badgeTitle}>{badge}</Text>
-                      <Text style={styles.badgeDescription}>
-                        Conquista desbloqueada no PythonQuest.
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-
-              <View style={styles.nextBadgeBox}>
-                <Text style={styles.nextBadgeLabel}>Próxima meta</Text>
-                <Text style={styles.nextBadgeText}>{nextBadgeHint}</Text>
-              </View>
-            </>
+            <Ionicons name="person" size={32} color={colors.ink} />
           )}
         </View>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Ações rápidas</Text>
-          <Text style={styles.sectionSubtitle}>
-            Controle sua conta e sua prática
+        <View style={styles.headerTextArea}>
+          <Text style={styles.profileName} numberOfLines={1}>
+            {user?.name || 'Visitante'}
+          </Text>
+          <Text style={styles.profileEmail} numberOfLines={1}>
+            {user?.email || 'Progresso salvo só neste aparelho'}
           </Text>
         </View>
+      </View>
 
-        <View style={styles.actionsGrid}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionCard,
-              pressed && styles.cardPressed
-            ]}
-            onPress={openPlayground}
-          >
-            <Text style={styles.actionIcon}>🧪</Text>
-            <Text style={styles.actionTitle}>Laboratório</Text>
-            <Text style={styles.actionText}>
-              Teste comandos Python livremente.
-            </Text>
-          </Pressable>
+      <LevelProgress xp={progress.xp} />
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionCard,
-              pressed && styles.cardPressed
-            ]}
-            onPress={restoreHearts}
-          >
-            <Text style={styles.actionIcon}>❤️</Text>
-            <Text style={styles.actionTitle}>Restaurar</Text>
-            <Text style={styles.actionText}>
-              Recarregue seus corações.
-            </Text>
-          </Pressable>
+      <View style={styles.statsGrid}>
+        <StatCard label="Sequência" value={activeStreak} icon="flame" color="#EA580C" />
+        <StatCard label="Corações" value={progress.hearts} icon="heart" color={colors.heart} />
+        <StatCard
+          label="Adventure"
+          value={progress.completedSpecialMissionIds.length}
+          icon="game-controller"
+          color={colors.secondary}
+        />
+      </View>
+
+      <View style={styles.trackCard}>
+        <View style={styles.trackHeader}>
+          <Text style={styles.trackTitle}>Trilha Python</Text>
+          <Text style={styles.trackPercent}>{trackPercent}%</Text>
         </View>
+        <ProgressBar value={trackPercent} />
+        <Text style={styles.trackHint}>
+          {completedLessons} de {lessons.length} missões concluídas
+        </Text>
+      </View>
 
-        <View style={styles.dangerZone}>
-          <Text style={styles.dangerTitle}>Área da conta</Text>
+      <SectionHeader
+        title="Conquistas"
+        subtitle={`${unlockedCount} de ${achievements.length} desbloqueadas`}
+      />
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.outlineDangerButton,
-              pressed && styles.cardPressed
-            ]}
-            onPress={confirmReset}
+      <View style={styles.badgeGrid}>
+        {achievements.map((badge) => (
+          <View
+            key={badge.id}
+            style={[styles.badgeCard, !badge.unlocked && styles.badgeCardLocked]}
+            accessible
+            accessibilityLabel={`${badge.id}. ${badge.unlocked ? 'Desbloqueada' : `Bloqueada, ${badge.value} de ${badge.target}`}. ${badge.description}`}
           >
-            <Text style={styles.outlineDangerButtonText}>
-              Zerar progresso desta conta
+            <View style={[styles.badgeIcon, badge.unlocked && styles.badgeIconUnlocked]}>
+              <Ionicons
+                name={badge.unlocked ? badge.icon : 'lock-closed'}
+                size={22}
+                color={badge.unlocked ? colors.accentText : colors.muted}
+              />
+            </View>
+            <Text style={styles.badgeTitle} numberOfLines={2}>
+              {badge.id}
             </Text>
-          </Pressable>
+            <Text style={styles.badgeDescription} numberOfLines={2}>
+              {badge.description}
+            </Text>
+            {!badge.unlocked ? (
+              <View style={styles.badgeProgress}>
+                <View style={styles.badgeProgressBar}>
+                  <ProgressBar
+                    value={toPercent(badge.value, badge.target)}
+                    height={6}
+                    color={colors.warning}
+                  />
+                </View>
+                <Text style={styles.badgeProgressText}>
+                  {badge.value}/{badge.target}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ))}
+      </View>
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.solidDangerButton,
-              pressed && styles.cardPressed
-            ]}
-            onPress={confirmLogout}
-          >
-            <Text style={styles.solidDangerButtonText}>
-              Sair da conta
+      {adventureBadges.length > 0 ? (
+        <>
+          <SectionHeader title="Medalhas do Adventure" />
+          <View style={styles.adventureBadges}>
+            {adventureBadges.map((badge) => (
+              <View key={badge} style={styles.adventureBadge}>
+                <Ionicons name="medal" size={16} color={colors.secondaryDark} />
+                <Text style={styles.adventureBadgeText}>{badge}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      <SectionHeader title="Conta" />
+
+      <View style={styles.accountCard}>
+        {user ? (
+          <AppButton title="Sair da conta" icon="log-out-outline" variant="ghost" onPress={confirmLogout} />
+        ) : (
+          <>
+            <Text style={styles.accountHint}>
+              Crie uma conta para salvar seu progresso na nuvem e continuar em outro celular.
             </Text>
-          </Pressable>
-        </View>
-      </ScrollView>
+            <AppButton title="Entrar" icon="log-in-outline" onPress={() => router.push('/auth/login')} />
+            <AppButton title="Criar conta" variant="ghost" onPress={() => router.push('/auth/register')} />
+          </>
+        )}
+
+        <AppButton
+          title="Zerar progresso"
+          icon="trash-outline"
+          variant="dangerOutline"
+          onPress={confirmReset}
+        />
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingBottom: spacing.xl
-  },
-  centerState: {
-    flex: 1,
-    minHeight: 500,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg
-  },
-  centerEmoji: {
-    fontSize: 48,
-    marginBottom: spacing.md
-  },
-  centerTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '900',
-    textAlign: 'center'
-  },
-  centerText: {
-    color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center',
-    marginTop: spacing.sm
-  },
-  retryButton: {
-    backgroundColor: '#16A34A',
-    borderRadius: 16,
-    paddingHorizontal: 22,
-    paddingVertical: 13,
-    marginTop: spacing.lg
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '900'
-  },
   headerCard: {
-    backgroundColor: '#111827',
-    borderRadius: 30,
-    padding: 22,
+    backgroundColor: colors.ink,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     marginBottom: spacing.md,
-    shadowColor: '#111827',
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: {
-      width: 0,
-      height: 12
-    },
-    elevation: 5
+    ...shadow.raised
   },
-  avatarCircle: {
-    width: 74,
-    height: 74,
-    borderRadius: 26,
-    backgroundColor: '#FACC15',
+  avatar: {
+    width: 68,
+    height: 68,
+    borderRadius: 22,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center'
   },
   avatarText: {
-    color: '#111827',
+    color: colors.ink,
     fontSize: 30,
     fontWeight: '900'
   },
   headerTextArea: {
     flex: 1
   },
-  profileLabel: {
-    color: '#D1D5DB',
-    fontSize: 13,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    marginBottom: 4
-  },
   profileName: {
     color: '#FFFFFF',
-    fontSize: 25,
+    fontSize: 23,
     fontWeight: '900',
-    letterSpacing: -0.5
+    letterSpacing: -0.4
   },
   profileEmail: {
-    color: '#D1D5DB',
+    color: colors.inkText,
     fontSize: 14,
-    lineHeight: 20,
     marginTop: 4
-  },
-  levelCard: {
-    backgroundColor: colors.card,
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    marginBottom: spacing.md
-  },
-  levelHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md
-  },
-  levelLabel: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    marginBottom: 4
-  },
-  levelTitle: {
-    color: colors.text,
-    fontSize: 21,
-    fontWeight: '900'
-  },
-  levelBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: '#DCFCE7',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  levelBadgeText: {
-    color: '#166534',
-    fontSize: 18,
-    fontWeight: '900'
-  },
-  levelHint: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: spacing.sm
   },
   statsGrid: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.lg
+    marginTop: spacing.md,
+    marginBottom: spacing.md
   },
-  statCard: {
-    flex: 1,
+  trackCard: {
     backgroundColor: colors.card,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 22,
     padding: spacing.md,
-    alignItems: 'center'
-  },
-  statIcon: {
-    fontSize: 24,
-    marginBottom: 6
-  },
-  statValue: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '900'
-  },
-  statLabel: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: '800',
-    marginTop: 2,
-    textAlign: 'center'
-  },
-  sectionHeader: {
-    marginBottom: spacing.sm
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.4
-  },
-  sectionSubtitle: {
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: 2
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 26,
-    padding: spacing.lg,
-    marginBottom: spacing.lg
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: spacing.md
-  },
-  emptyIcon: {
-    fontSize: 44,
-    marginBottom: spacing.sm
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '900'
-  },
-  emptyText: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 21,
-    textAlign: 'center',
-    marginTop: 6
-  },
-  badgesList: {
     gap: spacing.sm
   },
-  badgeItem: {
+  trackHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 20,
-    padding: spacing.md
+    justifyContent: 'space-between'
   },
-  badgeIconBox: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    backgroundColor: '#FEF3C7',
-    alignItems: 'center',
-    justifyContent: 'center'
+  trackTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '800'
+  },
+  trackPercent: {
+    color: colors.primaryDark,
+    fontSize: 16,
+    fontWeight: '900'
+  },
+  trackHint: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '600'
+  },
+  badgeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: spacing.sm
+  },
+  badgeCard: {
+    width: '48.5%',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    gap: 4
+  },
+  badgeCardLocked: {
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted
   },
   badgeIcon: {
-    fontSize: 24
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4
   },
-  badgeTextArea: {
-    flex: 1
+  badgeIconUnlocked: {
+    backgroundColor: colors.accentSoft
   },
   badgeTitle: {
     color: colors.text,
-    fontSize: 16,
-    fontWeight: '900'
+    fontSize: 14,
+    fontWeight: '800'
   },
   badgeDescription: {
     color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 2
+    fontSize: 12,
+    lineHeight: 17
   },
-  nextBadgeBox: {
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    borderRadius: 18,
-    padding: spacing.md,
-    marginTop: spacing.md
-  },
-  nextBadgeLabel: {
-    color: '#1D4ED8',
-    fontSize: 13,
-    fontWeight: '900',
-    marginBottom: 4,
-    textTransform: 'uppercase'
-  },
-  nextBadgeText: {
-    color: '#1E3A8A',
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '700'
-  },
-  actionsGrid: {
+  badgeProgress: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.lg
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4
   },
-  actionCard: {
-    flex: 1,
+  badgeProgressBar: {
+    flex: 1
+  },
+  badgeProgressText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  adventureBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs
+  },
+  adventureBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.secondarySoft,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  adventureBadgeText: {
+    color: colors.secondaryDark,
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  accountCard: {
     backgroundColor: colors.card,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 22,
-    padding: spacing.md
-  },
-  actionIcon: {
-    fontSize: 28,
-    marginBottom: spacing.sm
-  },
-  actionTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '900',
-    marginBottom: 4
-  },
-  actionText: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18
-  },
-  dangerZone: {
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    borderRadius: 24,
-    padding: spacing.lg,
+    padding: spacing.md,
     gap: spacing.sm
   },
-  dangerTitle: {
-    color: '#991B1B',
-    fontSize: 17,
-    fontWeight: '900',
-    marginBottom: 4
-  },
-  outlineDangerButton: {
-    minHeight: 50,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  outlineDangerButtonText: {
-    color: '#B91C1C',
+  accountHint: {
+    color: colors.textSecondary,
     fontSize: 14,
-    fontWeight: '900'
-  },
-  solidDangerButton: {
-    minHeight: 50,
-    borderRadius: 16,
-    backgroundColor: '#DC2626',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  solidDangerButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900'
-  },
-  cardPressed: {
-    transform: [{ scale: 0.99 }],
-    opacity: 0.9
+    lineHeight: 20
   }
 });

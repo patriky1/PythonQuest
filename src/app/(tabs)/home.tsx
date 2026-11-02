@@ -1,549 +1,363 @@
-import React, { useMemo } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View
-} from 'react-native';
+import React, { ComponentProps } from 'react';
+import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
+import { AppButton } from '@/components/AppButton';
+import { LevelProgress } from '@/components/LevelProgress';
 import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
+import { SectionHeader } from '@/components/SectionHeader';
 import { StatCard } from '@/components/StatCard';
-
+import { LearningErrorView, LearningLoadingView } from '@/components/StateView';
+import { Tag } from '@/components/Tag';
 import { useAuth } from '@/context/AuthContext';
 import { useLearning } from '@/context/LearningContext';
-import { useProgress } from '@/store/progressStore';
+import { useProgress } from '@/features/progress/ProgressContext';
+import { MAX_HEARTS } from '@/features/progress/progress.constants';
+import { toPercent } from '@/features/progress/progress.helpers';
+import { TopicProgress, useTopicProgress } from '@/features/progress/useTopicProgress';
+import { colors, radius, shadow, spacing } from '@/theme/colors';
 
-import { colors, spacing } from '@/theme/colors';
+type QuickAction = {
+  title: string;
+  text: string;
+  icon: ComponentProps<typeof Ionicons>['name'];
+  color: string;
+  onPress: () => void;
+};
+
+const QUICK_ACTIONS: QuickAction[] = [
+  {
+    title: 'Adventure',
+    text: 'Guie o herói com comandos.',
+    icon: 'game-controller',
+    color: colors.secondary,
+    onPress: () => router.push('/mission/pythonquest-adventure')
+  },
+  {
+    title: 'Terminal',
+    text: 'Teste Python livre.',
+    icon: 'terminal',
+    color: '#7C3AED',
+    onPress: () => router.push('/playground')
+  }
+];
 
 export default function HomeScreen() {
   const { user } = useAuth();
-  const { progress } = useProgress();
+  const { progress, activeStreak, nextLessonId } = useProgress();
+  const { lessons, lessonMap, isLearningLoading, learningError, reloadLearning } =
+    useLearning();
+  const topics = useTopicProgress();
 
-  const {
-    topics,
-    lessons,
-    orderedLessonIds,
-    lessonMap,
-    isLearningLoading,
-    learningError,
-    reloadLearning
-  } = useLearning();
+  const firstName = user?.name?.split(' ')[0];
+  const nextLesson = nextLessonId ? lessonMap[nextLessonId] : undefined;
+  const nextLessonTopic = topics.find((topic) => topic.id === nextLesson?.topicId);
+  const overallPercent = toPercent(progress.completedLessonIds.length, lessons.length);
 
-  const completedSet = useMemo(() => {
-    return new Set(progress.completedLessonIds);
-  }, [progress.completedLessonIds]);
+  function openTopic(topic: TopicProgress) {
+    const lessonId = nextLesson && nextLesson.topicId === topic.id ? nextLesson.id : null;
 
-  const completedLessonsCount = progress.completedLessonIds.length;
-  const totalLessonsCount = lessons.length;
-
-  const percent =
-    totalLessonsCount === 0
-      ? 0
-      : Math.round((completedLessonsCount / totalLessonsCount) * 100);
-
-  const nextLesson = useMemo(() => {
-    const nextLessonId = orderedLessonIds.find(
-      (lessonId) => !completedSet.has(lessonId)
-    );
-
-    if (!nextLessonId) {
-      return null;
+    if (lessonId) {
+      router.push(`/lesson/${lessonId}`);
+    } else {
+      router.push('/learn');
     }
-
-    return lessonMap[nextLessonId] ?? null;
-  }, [orderedLessonIds, completedSet, lessonMap]);
-
-  const topicProgress = useMemo(() => {
-    return topics.map((topic) => {
-      const completedInTopic = topic.lessonIds.filter((lessonId) =>
-        completedSet.has(lessonId)
-      ).length;
-
-      const totalInTopic = topic.lessonIds.length;
-
-      const topicPercent =
-        totalInTopic === 0
-          ? 0
-          : Math.round((completedInTopic / totalInTopic) * 100);
-
-      return {
-        ...topic,
-        completedInTopic,
-        totalInTopic,
-        topicPercent
-      };
-    });
-  }, [topics, completedSet]);
-
-  function openNextLesson() {
-    if (!nextLesson) {
-      return;
-    }
-
-    router.push(`/lesson/${nextLesson.id}`);
   }
 
-  function openTopicFirstAvailableLesson(topicId: string) {
-    const topic = topics.find((currentTopic) => currentTopic.id === topicId);
-
-    if (!topic) {
-      return;
-    }
-
-    const firstAvailableLessonId =
-      topic.lessonIds.find((lessonId) => !completedSet.has(lessonId)) ||
-      topic.lessonIds[0];
-
-    if (!firstAvailableLessonId) {
-      return;
-    }
-
-    router.push(`/lesson/${firstAvailableLessonId}`);
-  }
-
-  function openPlayground() {
-    router.push('/(tabs)/playground');
-  }
-
-  if (isLearningLoading) {
+  if (isLearningLoading && lessons.length === 0) {
     return (
       <Screen>
-        <View style={styles.centerState}>
-          <Text style={styles.centerEmoji}>🐍</Text>
-          <Text style={styles.centerTitle}>Carregando missões...</Text>
-          <Text style={styles.centerText}>
-            Buscando sua trilha Python no servidor.
-          </Text>
-        </View>
+        <LearningLoadingView />
       </Screen>
     );
   }
 
-  if (learningError) {
+  if (learningError && lessons.length === 0) {
     return (
       <Screen>
-        <View style={styles.centerState}>
-          <Text style={styles.centerEmoji}>⚠️</Text>
-          <Text style={styles.centerTitle}>Não foi possível carregar</Text>
-          <Text style={styles.centerText}>{learningError}</Text>
-
-          <Pressable style={styles.retryButton} onPress={reloadLearning}>
-            <Text style={styles.retryButtonText}>Tentar novamente</Text>
-          </Pressable>
-        </View>
+        <LearningErrorView message={learningError} onRetry={reloadLearning} />
       </Screen>
     );
   }
 
   return (
-    <Screen>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={styles.hero}>
-          <View style={styles.heroTopRow}>
-            <View style={styles.greetingArea}>
-              <Text style={styles.greeting}>
-                Olá, {user?.name || 'aprendiz'}.
-              </Text>
-              <Text style={styles.heroTitle}>Vamos praticar Python hoje?</Text>
-            </View>
-
-            <View style={styles.avatarBadge}>
-              <Text style={styles.avatarText}>Py</Text>
-            </View>
+    <Screen
+      refreshControl={
+        <RefreshControl
+          refreshing={isLearningLoading}
+          onRefresh={reloadLearning}
+          colors={[colors.primary]}
+        />
+      }
+    >
+      <View style={styles.hero}>
+        <View style={styles.heroTopRow}>
+          <View style={styles.greetingArea}>
+            <Text style={styles.greeting}>Olá, {firstName || 'aprendiz'}!</Text>
+            <Text style={styles.heroTitle}>Pronto para a próxima missão?</Text>
           </View>
 
-          <Text style={styles.heroDescription}>
-            Complete missões curtas, teste comandos no laboratório e acompanhe
-            seu avanço.
-          </Text>
-
-          <View style={styles.heroProgressArea}>
-            <View style={styles.progressHeader}>
-              <Text style={styles.progressLabel}>Progresso geral</Text>
-              <Text style={styles.progressPercent}>{percent}%</Text>
-            </View>
-
-            <ProgressBar value={percent} />
-
-            <Text style={styles.progressHint}>
-              {completedLessonsCount} de {totalLessonsCount} missões concluídas
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.statsRow}>
-          <StatCard label="XP" value={progress.xp} emoji="⚡" />
-          <StatCard label="Sequência" value={progress.streak} emoji="🔥" />
-          <StatCard label="Corações" value={progress.hearts} emoji="❤️" />
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Próxima missão</Text>
-          <Text style={styles.sectionCaption}>Continue de onde parou</Text>
-        </View>
-
-        {nextLesson ? (
-          <Pressable
-            style={({ pressed }) => [
-              styles.nextMissionCard,
-              pressed && styles.cardPressed
-            ]}
-            onPress={openNextLesson}
+          <View
+            style={[styles.streakBadge, activeStreak === 0 && styles.streakBadgeOff]}
+            accessible
+            accessibilityLabel={`Sequência de ${activeStreak} dias`}
           >
-            <View style={styles.nextMissionContent}>
-              <View style={styles.missionIcon}>
-                <Text style={styles.missionIconText}>▶</Text>
-              </View>
+            <Ionicons
+              name="flame"
+              size={22}
+              color={activeStreak > 0 ? '#FB923C' : colors.muted}
+            />
+            <Text style={styles.streakValue}>{activeStreak}</Text>
+          </View>
+        </View>
 
-              <View style={styles.missionTextArea}>
-                <Text style={styles.missionTitle}>{nextLesson.title}</Text>
-                <Text style={styles.missionSubtitle}>
-                  {nextLesson.subtitle}
+        <LevelProgress xp={progress.xp} dark />
+      </View>
+
+      {!user ? (
+        <Pressable
+          style={({ pressed }) => [styles.guestBanner, pressed && styles.pressed]}
+          onPress={() => router.push('/auth/login')}
+          accessibilityRole="button"
+        >
+          <Ionicons name="cloud-upload-outline" size={22} color={colors.secondaryDark} />
+          <Text style={styles.guestText}>
+            Você está no modo visitante. Entre para salvar seu progresso na nuvem.
+          </Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.secondaryDark} />
+        </Pressable>
+      ) : null}
+
+      <View style={styles.statsRow}>
+        <StatCard label="Missões" value={`${overallPercent}%`} icon="map" color={colors.primary} />
+        <StatCard
+          label="Corações"
+          value={`${progress.hearts}/${MAX_HEARTS}`}
+          icon="heart"
+          color={colors.heart}
+        />
+        <StatCard
+          label="Medalhas"
+          value={progress.badges.length}
+          icon="ribbon"
+          color={colors.warning}
+        />
+      </View>
+
+      <SectionHeader title="Continue de onde parou" />
+
+      {nextLesson ? (
+        <View style={styles.nextMissionCard}>
+          <View style={styles.nextMissionTop}>
+            <View style={styles.missionIcon}>
+              <Ionicons name="play" size={22} color={colors.primary} />
+            </View>
+
+            <View style={styles.missionTextArea}>
+              {nextLessonTopic ? (
+                <Text style={styles.missionTopic}>
+                  Módulo {nextLessonTopic.index + 1} · {nextLessonTopic.title}
                 </Text>
-
-                <View style={styles.missionMetaRow}>
-                  <Text style={styles.metaPill}>⚡ {nextLesson.xp} XP</Text>
-
-                  <Text style={styles.metaPill}>
-                    ⏱ {nextLesson.estimatedMinutes} min
-                  </Text>
-                </View>
-              </View>
+              ) : null}
+              <Text style={styles.missionTitle}>{nextLesson.title}</Text>
+              <Text style={styles.missionSubtitle}>{nextLesson.subtitle}</Text>
             </View>
-
-            <Text style={styles.nextMissionAction}>Começar</Text>
-          </Pressable>
-        ) : (
-          <View style={styles.finishedCard}>
-            <Text style={styles.finishedEmoji}>🏆</Text>
-            <Text style={styles.finishedTitle}>Trilha concluída</Text>
-            <Text style={styles.finishedText}>
-              Você concluiu todas as missões disponíveis. Continue praticando no
-              laboratório Python.
-            </Text>
           </View>
-        )}
 
-        <View style={styles.quickActionsRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.quickActionCard,
-              pressed && styles.cardPressed
-            ]}
-            onPress={() => router.push('/mission/pythonquest-adventure')}
-          >
-            <Text style={styles.quickActionIcon}>🧭</Text>
-            <Text style={styles.quickActionTitle}>Adventure</Text>
-            <Text style={styles.quickActionText}>
-              Guie o herói com comandos Python.
-            </Text>
-          </Pressable>
+          <View style={styles.metaRow}>
+            <Tag label={`+${nextLesson.xp} XP`} tone="warning" icon="flash" />
+            <Tag label={`${nextLesson.estimatedMinutes} min`} icon="time-outline" />
+            <Tag label={`${nextLesson.steps.length} etapas`} icon="layers-outline" />
+          </View>
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.quickActionCard,
-              pressed && styles.cardPressed
-            ]}
-            onPress={openPlayground}
-          >
-            <Text style={styles.quickActionIcon}>🧪</Text>
-            <Text style={styles.quickActionTitle}>Laboratório</Text>
-            <Text style={styles.quickActionText}>
-              Teste códigos livres e ganhe XP praticando.
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.quickActionCard,
-              pressed && styles.cardPressed
-            ]}
-            onPress={() => router.push('/(tabs)/profile')}
-          >
-            <Text style={styles.quickActionIcon}>👤</Text>
-            <Text style={styles.quickActionTitle}>Perfil</Text>
-            <Text style={styles.quickActionText}>
-              Veja medalhas, XP e progresso da conta.
-            </Text>
-          </Pressable>
+          <AppButton
+            title={progress.completedLessonIds.length === 0 ? 'Começar' : 'Continuar'}
+            icon="arrow-forward"
+            onPress={() => router.push(`/lesson/${nextLesson.id}`)}
+          />
         </View>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Trilha de aprendizado</Text>
-          <Text style={styles.sectionCaption}>
-            Tópicos organizados por etapa
+      ) : (
+        <View style={styles.finishedCard}>
+          <Ionicons name="trophy" size={40} color={colors.warning} />
+          <Text style={styles.finishedTitle}>Trilha concluída!</Text>
+          <Text style={styles.finishedText}>
+            Você completou todas as missões. Revise as aulas, encare o Adventure ou crie
+            seus próprios programas no Terminal.
           </Text>
         </View>
+      )}
 
-        <View style={styles.topicList}>
-          {topicProgress.map((topic, index) => {
-            const isCompleted =
-              topic.totalInTopic > 0 &&
-              topic.completedInTopic === topic.totalInTopic;
+      <View style={styles.quickActionsRow}>
+        {QUICK_ACTIONS.map((action) => (
+          <Pressable
+            key={action.title}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.quickActionCard, pressed && styles.pressed]}
+            onPress={action.onPress}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: `${action.color}1A` }]}>
+              <Ionicons name={action.icon} size={22} color={action.color} />
+            </View>
+            <Text style={styles.quickActionTitle}>{action.title}</Text>
+            <Text style={styles.quickActionText}>{action.text}</Text>
+          </Pressable>
+        ))}
+      </View>
 
-            const isLocked =
-              index > 0 &&
-              topicProgress[index - 1].completedInTopic === 0 &&
-              topic.completedInTopic === 0;
+      <SectionHeader title="Sua trilha" subtitle="Módulos organizados por etapa" />
 
-            return (
-              <Pressable
-                key={topic.id}
-                style={({ pressed }) => [
-                  styles.topicCard,
-                  pressed && !isLocked && styles.cardPressed,
-                  isLocked && styles.topicCardLocked
-                ]}
-                onPress={() => {
-                  if (!isLocked) {
-                    openTopicFirstAvailableLesson(topic.id);
-                  }
-                }}
-              >
-                <View style={styles.topicTopRow}>
-                  <View
-                    style={[
-                      styles.topicEmojiBox,
-                      { backgroundColor: topic.color || '#2563EB' }
-                    ]}
-                  >
-                    <Text style={styles.topicEmoji}>{topic.emoji}</Text>
-                  </View>
+      <View style={styles.topicList}>
+        {topics.map((topic) => (
+          <Pressable
+            key={topic.id}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !topic.isUnlocked }}
+            disabled={!topic.isUnlocked}
+            onPress={() => openTopic(topic)}
+            style={({ pressed }) => [
+              styles.topicCard,
+              !topic.isUnlocked && styles.topicCardLocked,
+              pressed && styles.pressed
+            ]}
+          >
+            <View style={[styles.topicEmojiBox, { backgroundColor: `${topic.color}22` }]}>
+              <Text style={styles.topicEmoji}>{topic.emoji}</Text>
+            </View>
 
-                  <View style={styles.topicTextArea}>
-                    <View style={styles.topicTitleRow}>
-                      <Text style={styles.topicTitle}>{topic.title}</Text>
+            <View style={styles.topicTextArea}>
+              <View style={styles.topicTitleRow}>
+                <Text style={styles.topicTitle} numberOfLines={1}>
+                  {topic.title}
+                </Text>
+                {topic.isCompleted ? (
+                  <Tag label="Concluído" tone="success" icon="checkmark" />
+                ) : !topic.isUnlocked ? (
+                  <Tag label="Bloqueado" icon="lock-closed" />
+                ) : null}
+              </View>
 
-                      {isCompleted ? (
-                        <Text style={styles.completedTag}>Concluído</Text>
-                      ) : isLocked ? (
-                        <Text style={styles.lockedTag}>Bloqueado</Text>
-                      ) : (
-                        <Text style={styles.activeTag}>Aberto</Text>
-                      )}
-                    </View>
+              <ProgressBar value={topic.percent} height={8} color={topic.color} />
 
-                    <Text style={styles.topicDescription}>
-                      {topic.description}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.topicProgressFooter}>
-                  <View style={styles.topicProgressTrack}>
-                    <View
-                      style={[
-                        styles.topicProgressFill,
-                        {
-                          width: `${topic.topicPercent}%`,
-                          backgroundColor: topic.color || '#2563EB'
-                        }
-                      ]}
-                    />
-                  </View>
-
-                  <Text style={styles.topicProgressText}>
-                    {topic.completedInTopic}/{topic.totalInTopic} missões
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      </ScrollView>
+              <Text style={styles.topicProgressText}>
+                {topic.completedCount}/{topic.totalCount} missões
+              </Text>
+            </View>
+          </Pressable>
+        ))}
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingBottom: spacing.xl
-  },
-  centerState: {
-    flex: 1,
-    minHeight: 500,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg
-  },
-  centerEmoji: {
-    fontSize: 48,
-    marginBottom: spacing.md
-  },
-  centerTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '900',
-    textAlign: 'center'
-  },
-  centerText: {
-    color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center',
-    marginTop: spacing.sm
-  },
-  retryButton: {
-    backgroundColor: '#16A34A',
-    borderRadius: 16,
-    paddingHorizontal: 22,
-    paddingVertical: 13,
-    marginTop: spacing.lg
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '900'
-  },
   hero: {
-    backgroundColor: '#111827',
-    borderRadius: 30,
-    padding: 22,
+    backgroundColor: colors.ink,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    gap: spacing.md,
     marginBottom: spacing.md,
-    shadowColor: '#111827',
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: {
-      width: 0,
-      height: 12
-    },
-    elevation: 5
+    ...shadow.raised
   },
   heroTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     gap: spacing.md
   },
   greetingArea: {
     flex: 1
   },
   greeting: {
-    color: '#D1D5DB',
+    color: colors.inkText,
     fontSize: 15,
-    fontWeight: '800',
-    marginBottom: 8
+    fontWeight: '700',
+    marginBottom: 4
   },
   heroTitle: {
     color: '#FFFFFF',
-    fontSize: 30,
-    lineHeight: 36,
+    fontSize: 26,
+    lineHeight: 32,
     fontWeight: '900',
-    letterSpacing: -0.8
+    letterSpacing: -0.6
   },
-  avatarBadge: {
-    width: 58,
-    height: 58,
-    borderRadius: 20,
-    backgroundColor: '#FACC15',
-    alignItems: 'center',
-    justifyContent: 'center'
+  streakBadge: {
+    minWidth: 58,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(251,146,60,0.16)',
+    alignItems: 'center'
   },
-  avatarText: {
-    color: '#111827',
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: -0.8
+  streakBadgeOff: {
+    backgroundColor: 'rgba(255,255,255,0.08)'
   },
-  heroDescription: {
-    color: '#D1D5DB',
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 14
-  },
-  heroProgressArea: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 22,
-    padding: spacing.md,
-    marginTop: 18
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm
-  },
-  progressLabel: {
+  streakValue: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900'
+    fontSize: 16,
+    fontWeight: '900',
+    marginTop: 2
   },
-  progressPercent: {
-    color: '#FACC15',
-    fontSize: 14,
-    fontWeight: '900'
+  guestBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.secondarySoft,
+    borderWidth: 1,
+    borderColor: colors.secondaryBorder,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md
   },
-  progressHint: {
-    color: '#D1D5DB',
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: spacing.sm
+  guestText: {
+    flex: 1,
+    color: colors.secondaryDark,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700'
   },
   statsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.lg
-  },
-  sectionHeader: {
     marginBottom: spacing.sm
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.4
-  },
-  sectionCaption: {
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: 2
   },
   nextMissionCard: {
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 26,
-    padding: spacing.lg,
+    borderRadius: radius.xl,
+    padding: spacing.md,
+    gap: spacing.md,
     marginBottom: spacing.md,
-    shadowColor: '#111827',
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: {
-      width: 0,
-      height: 8
-    },
-    elevation: 3
+    ...shadow.card
   },
-  nextMissionContent: {
+  nextMissionTop: {
     flexDirection: 'row',
     gap: spacing.md
   },
   missionIcon: {
     width: 52,
     height: 52,
-    borderRadius: 18,
-    backgroundColor: '#DCFCE7',
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center'
-  },
-  missionIconText: {
-    color: '#16A34A',
-    fontSize: 20,
-    fontWeight: '900'
   },
   missionTextArea: {
     flex: 1
   },
+  missionTopic: {
+    color: colors.primaryDark,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    marginBottom: 2
+  },
   missionTitle: {
     color: colors.text,
     fontSize: 19,
-    fontWeight: '900',
-    lineHeight: 24
+    lineHeight: 24,
+    fontWeight: '800'
   },
   missionSubtitle: {
     color: colors.muted,
@@ -551,183 +365,113 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 4
   },
-  missionMetaRow: {
+  metaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md
-  },
-  metaPill: {
-    backgroundColor: '#F3F4F6',
-    color: '#374151',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 12,
-    fontWeight: '900'
-  },
-  nextMissionAction: {
-    backgroundColor: '#16A34A',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    overflow: 'hidden',
-    borderRadius: 16,
-    paddingVertical: 13,
-    fontSize: 15,
-    fontWeight: '900',
-    marginTop: spacing.md
+    gap: spacing.xs
   },
   finishedCard: {
     backgroundColor: '#FFFBEB',
     borderWidth: 1,
     borderColor: '#FDE68A',
-    borderRadius: 26,
+    borderRadius: radius.xl,
     padding: spacing.lg,
     marginBottom: spacing.md,
-    alignItems: 'center'
-  },
-  finishedEmoji: {
-    fontSize: 40,
-    marginBottom: spacing.sm
+    alignItems: 'center',
+    gap: spacing.xs
   },
   finishedTitle: {
-    color: '#92400E',
+    color: colors.accentText,
     fontSize: 20,
     fontWeight: '900'
   },
   finishedText: {
-    color: '#92400E',
+    color: colors.accentText,
     fontSize: 14,
     lineHeight: 21,
-    textAlign: 'center',
-    marginTop: 6
+    textAlign: 'center'
   },
   quickActionsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.lg
+    marginBottom: spacing.sm
   },
   quickActionCard: {
     flex: 1,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 22,
+    borderRadius: radius.lg,
     padding: spacing.md
   },
   quickActionIcon: {
-    fontSize: 28,
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: spacing.sm
   },
   quickActionTitle: {
     color: colors.text,
     fontSize: 16,
-    fontWeight: '900',
-    marginBottom: 4
+    fontWeight: '800'
   },
   quickActionText: {
     color: colors.muted,
     fontSize: 13,
-    lineHeight: 18
+    lineHeight: 18,
+    marginTop: 2
   },
   topicList: {
     gap: spacing.sm
   },
   topicCard: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    alignItems: 'center',
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 24,
+    borderRadius: radius.lg,
     padding: spacing.md
   },
   topicCardLocked: {
-    opacity: 0.58
-  },
-  topicTopRow: {
-    flexDirection: 'row',
-    gap: spacing.md
+    opacity: 0.6
   },
   topicEmojiBox: {
     width: 52,
     height: 52,
-    borderRadius: 18,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center'
   },
   topicEmoji: {
-    fontSize: 24
+    fontSize: 26
   },
   topicTextArea: {
-    flex: 1
+    flex: 1,
+    gap: 8
   },
   topicTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    flexWrap: 'wrap'
+    justifyContent: 'space-between',
+    gap: spacing.sm
   },
   topicTitle: {
+    flex: 1,
     color: colors.text,
-    fontSize: 17,
-    fontWeight: '900'
-  },
-  completedTag: {
-    backgroundColor: '#DCFCE7',
-    color: '#166534',
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    fontSize: 11,
-    fontWeight: '900',
-    overflow: 'hidden'
-  },
-  activeTag: {
-    backgroundColor: '#DBEAFE',
-    color: '#1D4ED8',
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    fontSize: 11,
-    fontWeight: '900',
-    overflow: 'hidden'
-  },
-  lockedTag: {
-    backgroundColor: '#F3F4F6',
-    color: '#6B7280',
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    fontSize: 11,
-    fontWeight: '900',
-    overflow: 'hidden'
-  },
-  topicDescription: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 5
-  },
-  topicProgressFooter: {
-    marginTop: spacing.md
-  },
-  topicProgressTrack: {
-    height: 8,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 999,
-    overflow: 'hidden'
-  },
-  topicProgressFill: {
-    height: '100%',
-    borderRadius: 999
+    fontSize: 16,
+    fontWeight: '800'
   },
   topicProgressText: {
     color: colors.muted,
     fontSize: 12,
-    fontWeight: '800',
-    marginTop: 6
+    fontWeight: '700'
   },
-  cardPressed: {
-    transform: [{ scale: 0.99 }],
-    opacity: 0.92
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }]
   }
 });

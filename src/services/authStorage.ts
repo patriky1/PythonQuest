@@ -1,20 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { requestApi, TOKEN_KEY } from '@/services/apiClient';
 import { SignInPayload, SignUpPayload, User } from '@/types/auth';
 
-const TOKEN_KEY = '@pythonquest:token';
 const CURRENT_USER_KEY = '@pythonquest:current-user';
-
-// Teste no navegador/web:
-// http://localhost:3333
-//
-// Teste no emulador Android:
-// http://10.0.2.2:3333
-//
-// Teste em celular físico:
-// usar o IP do computador na rede, exemplo:
-// http://192.168.0.10:3333
-
-import { API_URL } from '@/config/api';
 
 type AuthResponse = {
   token: string;
@@ -25,35 +14,29 @@ type MeResponse = {
   user: User;
 };
 
-async function requestApi<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {})
-    }
-  });
-
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    const message =
-      data?.message ||
-      data?.error ||
-      'Não foi possível concluir a operação.';
-
-    throw new Error(message);
-  }
-
-  return data as T;
+async function saveAuthSession(token: string, user: User) {
+  await AsyncStorage.multiSet([
+    [TOKEN_KEY, token],
+    [CURRENT_USER_KEY, JSON.stringify(user)]
+  ]);
 }
 
-async function saveAuthSession(token: string, user: User) {
-  await AsyncStorage.setItem(TOKEN_KEY, token);
-  await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+async function clearAuthSession() {
+  await AsyncStorage.multiRemove([TOKEN_KEY, CURRENT_USER_KEY]);
+}
+
+async function getCachedUser(): Promise<User | null> {
+  const rawUser = await AsyncStorage.getItem(CURRENT_USER_KEY);
+
+  if (!rawUser) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawUser) as User;
+  } catch {
+    return null;
+  }
 }
 
 export async function getCurrentUser(): Promise<User | null> {
@@ -67,23 +50,27 @@ export async function getCurrentUser(): Promise<User | null> {
   try {
     const data = await requestApi<MeResponse>('/auth/me', {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
+      auth: true
     });
 
     await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(data.user));
 
     return data.user;
-  } catch {
-    await AsyncStorage.removeItem(TOKEN_KEY);
-    await AsyncStorage.removeItem(CURRENT_USER_KEY);
+  } catch (error) {
+    const isOffline =
+      error instanceof Error && error.message.startsWith('Sem conexão');
 
+    // Offline: mantém o aluno logado com os dados salvos no aparelho.
+    if (isOffline) {
+      return getCachedUser();
+    }
+
+    await clearAuthSession();
     return null;
   }
 }
 
-export async function createLocalUser(payload: SignUpPayload): Promise<User> {
+export async function registerUser(payload: SignUpPayload): Promise<User> {
   const data = await requestApi<AuthResponse>('/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload)
@@ -94,7 +81,7 @@ export async function createLocalUser(payload: SignUpPayload): Promise<User> {
   return data.user;
 }
 
-export async function loginLocalUser(payload: SignInPayload): Promise<User> {
+export async function loginUser(payload: SignInPayload): Promise<User> {
   const data = await requestApi<AuthResponse>('/auth/login', {
     method: 'POST',
     body: JSON.stringify(payload)
@@ -105,7 +92,6 @@ export async function loginLocalUser(payload: SignInPayload): Promise<User> {
   return data.user;
 }
 
-export async function logoutLocalUser() {
-  await AsyncStorage.removeItem(TOKEN_KEY);
-  await AsyncStorage.removeItem(CURRENT_USER_KEY);
+export async function logoutUser() {
+  await clearAuthSession();
 }

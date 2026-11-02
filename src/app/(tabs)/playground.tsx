@@ -1,1148 +1,763 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TextInputSelectionChangeEvent,
   View
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
+import { AppButton } from '@/components/AppButton';
+import { CodeBlock } from '@/components/CodeBlock';
+import { ProgressBar } from '@/components/ProgressBar';
 import {
   PythonRunnerHandle,
-  PythonRunnerWebView
+  PythonRunnerWebView,
+  PythonRunResult
 } from '@/components/python/PythonRunnerWebView';
-
 import { Screen } from '@/components/Screen';
+import { SectionHeader } from '@/components/SectionHeader';
+import { Tag } from '@/components/Tag';
+import {
+  EDITOR_SHORTCUTS,
+  INITIAL_CODE,
+  PLAYGROUND_EXAMPLES,
+  PlaygroundExample
+} from '@/constants/playgroundExamples';
 import { useAuth } from '@/context/AuthContext';
-import { useProgress } from '@/store/progressStore';
-
+import { useProgress } from '@/features/progress/ProgressContext';
+import { toPercent } from '@/features/progress/progress.helpers';
 import {
   addPlaygroundHistoryItem,
   clearPlaygroundHistory,
   getPlaygroundHistory
 } from '@/services/playgroundHistory';
-
 import {
   awardPlaygroundPracticeXp,
-  getTodayPlaygroundPracticeXp
+  getTodayPlaygroundPracticeXp,
+  PLAYGROUND_DAILY_XP_LIMIT,
+  PLAYGROUND_XP_PER_RUN
 } from '@/services/playgroundPractice';
+import { colors, monoFont, radius, shadow, spacing } from '@/theme/colors';
+import { PlaygroundHistoryItem } from '@/types/playground';
+import { getCodeReview } from '@/utils/pythonFeedback';
 
-import { PlaygroundHistoryItem, PlaygroundRunStatus } from '@/types/playground';
-import { colors, spacing } from '@/theme/colors';
+type RunnerStatus = 'loading' | 'ready' | 'error';
+type OutputStatus = 'idle' | 'running' | 'success' | 'error';
+type Selection = { start: number; end: number };
 
-const DAILY_XP_LIMIT = 20;
-const XP_PER_SUCCESSFUL_RUN = 2;
-
-const initialCode = `# Laboratório Python
-nome = "PythonQuest"
-
-print(f"Olá, {nome}!")
-
-for numero in range(1, 6):
-    print(f"Número: {numero}")
-
-2 + 2`;
-
-const examples = [
-  {
-    title: 'Variáveis',
-    code: `nome = "Ana"
-idade = 20
-altura = 1.68
-
-print(f"{nome} tem {idade} anos.")
-print(f"Altura: {altura:.2f} m")`
-  },
-  {
-    title: 'Loop for',
-    code: `produtos = ["Caneta", "Caderno", "Mochila"]
-
-for produto in produtos:
-    print(f"Produto: {produto}")`
-  },
-  {
-    title: 'Condicional',
-    code: `media = 8.4
-
-if media >= 7:
-    print("Aprovado")
-else:
-    print("Tente novamente")`
-  },
-  {
-    title: 'Compra',
-    code: `preco = 120.0
-quantidade = 2
-desconto = 10
-
-subtotal = preco * quantidade
-valor_desconto = subtotal * desconto / 100
-total = subtotal - valor_desconto
-
-print(f"Subtotal: R$ {subtotal:.2f}")
-print(f"Desconto: R$ {valor_desconto:.2f}")
-print(f"Total: R$ {total:.2f}")`
-  }
-];
-
-function hasPythonError(output: string) {
-  const normalizedOutput = output.toLowerCase();
-
-  return (
-    normalizedOutput.includes('traceback') ||
-    normalizedOutput.includes('syntaxerror') ||
-    normalizedOutput.includes('typeerror') ||
-    normalizedOutput.includes('nameerror') ||
-    normalizedOutput.includes('valueerror') ||
-    normalizedOutput.includes('indentationerror')
-  );
-}
-
-function getCodeReview(code: string, output: string) {
-  const tips: string[] = [];
-
-  if (!code.trim()) {
-    tips.push('Digite algum código antes de executar.');
-  }
-
-  if (code.includes('input(')) {
-    tips.push('input() interativo ainda não está habilitado nesta versão do laboratório.');
-  }
-
-  if (!code.includes('print(') && code.trim().split('\n').length > 1) {
-    tips.push('Use print() para visualizar melhor os resultados de códigos com várias linhas.');
-  }
-
-  if (hasPythonError(output)) {
-    tips.push('O Python encontrou um erro. Leia a última linha da saída para encontrar a causa principal.');
-  }
-
-  if (output.includes('IndentationError')) {
-    tips.push('Revise a indentação. Linhas dentro de if, for e while precisam ficar recuadas.');
-  }
-
-  if (output.includes('NameError')) {
-    tips.push('Alguma variável ou função foi usada antes de ser criada.');
-  }
-
-  if (output.includes('TypeError')) {
-    tips.push('Confira se você não está misturando texto e número sem conversão.');
-  }
-
-  if (tips.length === 0) {
-    tips.push('Código executado sem erros detectados. Agora tente alterar valores e observar o resultado.');
-  }
-
-  return tips;
-}
+const SLOW_RUN_MS = 8000;
+const HISTORY_PREVIEW_COUNT = 5;
 
 function formatDate(value: string) {
-  try {
-    return new Date(value).toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } catch {
-    return 'Data indisponível';
-  }
+  return new Date(value).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 }
 
 export default function PlaygroundScreen() {
-  const runnerRef = useRef<PythonRunnerHandle>(null);
-  const lastExecutedCodeRef = useRef(initialCode);
-
   const { user } = useAuth();
   const { addXp } = useProgress();
+  const historyOwner = user?.id ?? 'guest';
 
-  const [code, setCode] = useState(initialCode);
-  const [output, setOutput] = useState('Execute um código para ver a saída aqui.');
-  const [reviewTips, setReviewTips] = useState<string[]>([
-    'Execute um código para receber dicas automáticas.'
-  ]);
+  const runnerRef = useRef<PythonRunnerHandle>(null);
+  const lastExecutedCodeRef = useRef('');
+  const lastRewardedCodeRef = useRef('');
+  const selectionRef = useRef<Selection>({ start: 0, end: 0 });
+  const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [code, setCode] = useState(INITIAL_CODE);
+  const [forcedSelection, setForcedSelection] = useState<Selection>();
+  const [inputs, setInputs] = useState('');
+  const [showInputs, setShowInputs] = useState(false);
+
+  const [runnerStatus, setRunnerStatus] = useState<RunnerStatus>('loading');
+  const [output, setOutput] = useState('Toque em Executar para ver o resultado aqui.');
+  const [outputStatus, setOutputStatus] = useState<OutputStatus>('idle');
+  const [isSlowRun, setIsSlowRun] = useState(false);
+  const [reviewTips, setReviewTips] = useState<string[]>([]);
 
   const [history, setHistory] = useState<PlaygroundHistoryItem[]>([]);
-  const [isPythonReady, setIsPythonReady] = useState(false);
-  const [todayPracticeXp, setTodayPracticeXp] = useState(0);
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  const [todayXp, setTodayXp] = useState(0);
   const [lastXpAwarded, setLastXpAwarded] = useState(0);
 
-  const xpPercent = useMemo(() => {
-    return Math.min(100, Math.round((todayPracticeXp / DAILY_XP_LIMIT) * 100));
-  }, [todayPracticeXp]);
-
-  async function loadHistory() {
-    if (!user?.id) {
-      setHistory([]);
-      setTodayPracticeXp(0);
-      return;
-    }
-
-    const storedHistory = await getPlaygroundHistory(user.id);
-    const storedTodayXp = await getTodayPlaygroundPracticeXp(user.id);
-
-    setHistory(storedHistory);
-    setTodayPracticeXp(storedTodayXp);
-  }
-
   useEffect(() => {
-    loadHistory();
-  }, [user?.id]);
+    let isMounted = true;
 
-  async function saveExecution(params: {
-    executedCode: string;
-    executionOutput: string;
-    status: PlaygroundRunStatus;
-    xpAwarded: number;
-  }) {
-    if (!user?.id) {
-      return;
-    }
-
-    const updatedHistory = await addPlaygroundHistoryItem(user.id, {
-      code: params.executedCode,
-      output: params.executionOutput,
-      status: params.status,
-      xpAwarded: params.xpAwarded
-    });
-
-    setHistory(updatedHistory);
-  }
-
-  async function handleSuccessfulOutput(executionOutput: string) {
-    const executedCode = lastExecutedCodeRef.current;
-    const executionHasError = hasPythonError(executionOutput);
-
-    let xpAwarded = 0;
-
-    if (!executionHasError && user?.id) {
-      xpAwarded = await awardPlaygroundPracticeXp(
-        user.id,
-        XP_PER_SUCCESSFUL_RUN,
-        DAILY_XP_LIMIT
-      );
-
-      if (xpAwarded > 0) {
-        await addXp(xpAwarded);
+    Promise.all([
+      getPlaygroundHistory(historyOwner),
+      getTodayPlaygroundPracticeXp(historyOwner)
+    ]).then(([storedHistory, storedXp]) => {
+      if (isMounted) {
+        setHistory(storedHistory);
+        setTodayXp(storedXp);
       }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [historyOwner]);
+
+  useEffect(() => () => clearSlowTimer(), []);
+
+  function clearSlowTimer() {
+    if (slowTimerRef.current) {
+      clearTimeout(slowTimerRef.current);
+      slowTimerRef.current = null;
     }
-
-    const status: PlaygroundRunStatus = executionHasError ? 'error' : 'success';
-
-    setOutput(executionOutput);
-    setLastXpAwarded(xpAwarded);
-
-    const storedTodayXp = user?.id
-      ? await getTodayPlaygroundPracticeXp(user.id)
-      : 0;
-
-    setTodayPracticeXp(storedTodayXp);
-    setReviewTips(getCodeReview(executedCode, executionOutput));
-
-    await saveExecution({
-      executedCode,
-      executionOutput,
-      status,
-      xpAwarded
-    });
+    setIsSlowRun(false);
   }
 
-  async function handleRunnerError(error: string) {
-    const executedCode = lastExecutedCodeRef.current;
+  const handleResult = useCallback(
+    async ({ output: runOutput, hasError }: PythonRunResult) => {
+      clearSlowTimer();
 
-    setOutput(error);
-    setLastXpAwarded(0);
-    setReviewTips(getCodeReview(executedCode, error));
+      const executedCode = lastExecutedCodeRef.current;
+      const normalizedCode = executedCode.trim();
+      let xpAwarded = 0;
 
-    await saveExecution({
-      executedCode,
-      executionOutput: error,
-      status: 'error',
-      xpAwarded: 0
-    });
-  }
+      // XP só para código novo: repetir o mesmo programa não rende pontos.
+      if (!hasError && normalizedCode !== lastRewardedCodeRef.current) {
+        xpAwarded = await awardPlaygroundPracticeXp(historyOwner);
 
-  function handleRunCode() {
-    const cleanCode = code.trim();
+        if (xpAwarded > 0) {
+          lastRewardedCodeRef.current = normalizedCode;
+          await addXp(xpAwarded);
+        }
+      }
 
-    if (!cleanCode) {
-      Alert.alert('Código vazio', 'Digite algum comando Python antes de executar.');
+      setOutput(runOutput || 'Código executado sem saída. Use print() para mostrar resultados.');
+      setOutputStatus(hasError ? 'error' : 'success');
+      setLastXpAwarded(xpAwarded);
+      setReviewTips(getCodeReview(executedCode, runOutput, hasError));
+      setTodayXp(await getTodayPlaygroundPracticeXp(historyOwner));
+
+      setHistory(
+        await addPlaygroundHistoryItem(historyOwner, {
+          code: executedCode,
+          output: runOutput,
+          status: hasError ? 'error' : 'success',
+          xpAwarded
+        })
+      );
+    },
+    [addXp, historyOwner]
+  );
+
+  function handleRun() {
+    if (!code.trim()) {
+      setOutputStatus('error');
+      setOutput('O editor está vazio. Escreva um comando, como print("Oi").');
       return;
     }
 
-    if (!isPythonReady) {
-      Alert.alert(
-        'Python carregando',
-        'Aguarde o interpretador ficar pronto antes de executar.'
-      );
+    if (runnerStatus !== 'ready') {
       return;
     }
 
     lastExecutedCodeRef.current = code;
-
+    setOutputStatus('running');
     setOutput('Executando...');
     setLastXpAwarded(0);
-    setReviewTips(['Executando análise...']);
+    setReviewTips([]);
 
-    runnerRef.current?.runCode(code);
+    clearSlowTimer();
+    slowTimerRef.current = setTimeout(() => setIsSlowRun(true), SLOW_RUN_MS);
+
+    runnerRef.current?.runCode(code, inputs ? inputs.split('\n') : []);
   }
 
-  function handleClearOutput() {
-    setOutput('Saída limpa. Execute um código para ver novos resultados.');
-    setLastXpAwarded(0);
-    setReviewTips(['Execute um código para receber dicas automáticas.']);
+  function handleReloadRunner() {
+    clearSlowTimer();
+    setRunnerStatus('loading');
+    setOutputStatus('idle');
+    setOutput('Python reiniciado. Revise o código (um while sem fim trava a execução) e tente de novo.');
+    runnerRef.current?.reload();
   }
 
-  function handleResetSession() {
-    runnerRef.current?.resetSession();
-    setLastXpAwarded(0);
+  function loadExample(example: PlaygroundExample) {
+    setCode(example.code);
+    setInputs(example.inputs ?? '');
+    setShowInputs(Boolean(example.inputs));
+    setOutputStatus('idle');
+    setOutput('Exemplo carregado. Toque em Executar.');
+    setReviewTips([]);
   }
 
-  function handleAnalyzeCode() {
-    setReviewTips(getCodeReview(code, output));
+  function insertShortcut(symbol: string) {
+    const text = symbol === 'TAB' ? '    ' : symbol;
+    const { start, end } = selectionRef.current;
+    const cursor = start + text.length;
+
+    setCode((current) => current.slice(0, start) + text + current.slice(end));
+    selectionRef.current = { start: cursor, end: cursor };
+    setForcedSelection({ start: cursor, end: cursor });
   }
 
-  function handleUseHistoryItem(item: PlaygroundHistoryItem) {
+  function handleSelectionChange(event: TextInputSelectionChangeEvent) {
+    selectionRef.current = event.nativeEvent.selection;
+
+    if (forcedSelection) {
+      setForcedSelection(undefined);
+    }
+  }
+
+  function loadHistoryItem(item: PlaygroundHistoryItem) {
     setCode(item.code);
-    setOutput(item.output);
-    setLastXpAwarded(item.xpAwarded);
-    setReviewTips(getCodeReview(item.code, item.output));
+    setOutput(item.output || 'Sem saída.');
+    setOutputStatus(item.status);
+    setReviewTips(getCodeReview(item.code, item.output, item.status === 'error'));
   }
 
   function confirmClearHistory() {
-    Alert.alert(
-      'Limpar histórico?',
-      'Todos os códigos executados neste laboratório serão removidos desta conta.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Limpar',
-          style: 'destructive',
-          onPress: handleClearHistory
+    Alert.alert('Limpar histórico?', 'Os códigos executados serão removidos deste aparelho.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Limpar',
+        style: 'destructive',
+        onPress: async () => {
+          await clearPlaygroundHistory(historyOwner);
+          setHistory([]);
         }
-      ]
-    );
+      }
+    ]);
   }
 
-  async function handleClearHistory() {
-    if (!user?.id) {
-      return;
-    }
-
-    await clearPlaygroundHistory(user.id);
-    setHistory([]);
-  }
+  const visibleHistory = showAllHistory ? history : history.slice(0, HISTORY_PREVIEW_COUNT);
+  const isRunning = outputStatus === 'running';
 
   return (
     <Screen>
       <PythonRunnerWebView
         ref={runnerRef}
-        onReadyChange={setIsPythonReady}
-        onOutput={handleSuccessfulOutput}
-        onError={handleRunnerError}
+        onReadyChange={(ready) => setRunnerStatus(ready ? 'ready' : 'loading')}
+        onLoadError={(message) => {
+          setRunnerStatus('error');
+          setOutputStatus('error');
+          setOutput(message);
+        }}
+        onResult={handleResult}
+        onInfo={(message) => {
+          clearSlowTimer();
+          setOutputStatus('idle');
+          setOutput(message);
+        }}
       />
 
-      <KeyboardAvoidingView
-        style={styles.keyboard}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
-      >
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          contentContainerStyle={styles.scrollContent}
-        >
-          <View style={styles.hero}>
-            <View style={styles.heroTop}>
-              <View style={styles.heroIcon}>
-                <Text style={styles.heroIconText}>Py</Text>
-              </View>
-
-              <View style={styles.heroTextArea}>
-                <Text style={styles.heroLabel}>Laboratório</Text>
-                <Text style={styles.heroTitle}>Terminal Python</Text>
-                <Text style={styles.heroSubtitle}>
-                  Escreva, execute, teste hipóteses e aprenda vendo o resultado.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.statusRow}>
-              <View style={styles.statusPill}>
-                <View
-                  style={[
-                    styles.statusDot,
-                    isPythonReady ? styles.statusDotReady : styles.statusDotLoading
-                  ]}
-                />
-                <Text style={styles.statusPillText}>
-                  {isPythonReady ? 'Python pronto' : 'Carregando Python'}
-                </Text>
-              </View>
-
-              <View style={styles.statusPill}>
-                <Text style={styles.statusPillText}>
-                  ⚡ {todayPracticeXp}/{DAILY_XP_LIMIT} XP hoje
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.xpCard}>
-            <View style={styles.xpHeader}>
-              <Text style={styles.xpTitle}>Prática diária</Text>
-              <Text style={styles.xpValue}>{xpPercent}%</Text>
-            </View>
-
-            <View style={styles.xpTrack}>
-              <View style={[styles.xpFill, { width: `${xpPercent}%` }]} />
-            </View>
-
-            <Text style={styles.xpHint}>
-              Ganhe até {DAILY_XP_LIMIT} XP por dia executando códigos sem erro.
-            </Text>
-
-            {lastXpAwarded > 0 ? (
-              <View style={styles.lastXpBox}>
-                <Text style={styles.lastXpText}>
-                  +{lastXpAwarded} XP adicionado ao seu perfil.
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Exemplos rápidos</Text>
-            <Text style={styles.sectionSubtitle}>
-              Toque em um exemplo para carregar no editor
-            </Text>
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.examplesRow}
-          >
-            {examples.map((example) => (
-              <Pressable
-                key={example.title}
-                style={({ pressed }) => [
-                  styles.exampleCard,
-                  pressed && styles.cardPressed
-                ]}
-                onPress={() => setCode(example.code)}
-              >
-                <Text style={styles.exampleIcon}>⌘</Text>
-                <Text style={styles.exampleTitle}>{example.title}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.cardTitle}>Editor</Text>
-                <Text style={styles.cardSubtitle}>
-                  Digite seu código Python abaixo
-                </Text>
-              </View>
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.ghostButton,
-                  pressed && styles.cardPressed
-                ]}
-                onPress={handleAnalyzeCode}
-              >
-                <Text style={styles.ghostButtonText}>Analisar</Text>
-              </Pressable>
-            </View>
-
-            <TextInput
-              value={code}
-              onChangeText={setCode}
-              multiline
-              autoCapitalize="none"
-              autoCorrect={false}
-              spellCheck={false}
-              textAlignVertical="top"
-              style={styles.editor}
-              placeholder="# Escreva seu código aqui"
-              placeholderTextColor="#6B7280"
-            />
-
-            <View style={styles.editorActions}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.secondaryActionButton,
-                  pressed && styles.cardPressed
-                ]}
-                onPress={() => setCode('')}
-              >
-                <Text style={styles.secondaryActionText}>Limpar código</Text>
-              </Pressable>
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.runButton,
-                  pressed && styles.cardPressed,
-                  !isPythonReady && styles.disabledButton
-                ]}
-                onPress={handleRunCode}
-                disabled={!isPythonReady}
-              >
-                <Text style={styles.runButtonText}>▶ Executar</Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.cardTitle}>Saída</Text>
-                
-              </View>
-
-              <View style={styles.outputButtons}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.ghostButton,
-                    pressed && styles.cardPressed
-                  ]}
-                  onPress={handleClearOutput}
-                >
-                  <Text style={styles.ghostButtonText}>Limpar</Text>
-                </Pressable>
-
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.ghostButton,
-                    pressed && styles.cardPressed
-                  ]}
-                  onPress={handleResetSession}
-                >
-                  <Text style={styles.ghostButtonText}>Reset</Text>
-                </Pressable>
-              </View>
-            </View>
-
-            <View style={styles.outputBox}>
-              <Text style={styles.outputText}>
-                {output || 'Sem saída.'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.reviewCard}>
-            <View style={styles.reviewHeader}>
-              <Text style={styles.reviewIcon}>💡</Text>
-              <View style={styles.reviewTextArea}>
-                <Text style={styles.reviewTitle}>Correção e dicas</Text>
-                <Text style={styles.reviewSubtitle}>
-                  Feedback rápido baseado no código e na saída
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.tipsList}>
-              {reviewTips.map((tip) => (
-                <Text key={tip} style={styles.reviewText}>
-                  • {tip}
-                </Text>
-              ))}
-            </View>
-          </View>
-
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Histórico</Text>
-            <Text style={styles.sectionSubtitle}>
-              Últimos códigos executados nesta conta
-            </Text>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.historyHeader}>
-              <Text style={styles.historyCount}>
-                {history.length} registro{history.length === 1 ? '' : 's'}
-              </Text>
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.ghostButton,
-                  pressed && styles.cardPressed,
-                  history.length === 0 && styles.disabledButton
-                ]}
-                onPress={confirmClearHistory}
-                disabled={history.length === 0}
-              >
-                <Text style={styles.ghostButtonText}>Limpar</Text>
-              </Pressable>
-            </View>
-
-            {history.length === 0 ? (
-              <View style={styles.emptyHistory}>
-                <Text style={styles.emptyHistoryIcon}>📄</Text>
-                <Text style={styles.emptyHistoryTitle}>
-                  Nenhuma execução ainda
-                </Text>
-                <Text style={styles.emptyHistoryText}>
-                  Execute um código para começar seu histórico de prática.
-                </Text>
-              </View>
+      <View style={styles.statusCard}>
+        <View style={styles.statusRow}>
+          <View style={styles.statusPill}>
+            {runnerStatus === 'loading' ? (
+              <ActivityIndicator size="small" color={colors.accent} />
             ) : (
-              <View style={styles.historyList}>
-                {history.map((item) => (
-                  <View key={item.id} style={styles.historyItem}>
-                    <View style={styles.historyItemTop}>
-                      <View
-                        style={[
-                          styles.historyStatusBadge,
-                          item.status === 'success'
-                            ? styles.historyStatusSuccess
-                            : styles.historyStatusError
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.historyStatusText,
-                            item.status === 'success'
-                              ? styles.historyStatusTextSuccess
-                              : styles.historyStatusTextError
-                          ]}
-                        >
-                          {item.status === 'success' ? 'Sucesso' : 'Erro'}
-                        </Text>
-                      </View>
-
-                      <Text style={styles.historyDate}>
-                        {formatDate(item.createdAt)}
-                      </Text>
-                    </View>
-
-                    <View style={styles.historyCodeBox}>
-                      <Text numberOfLines={4} style={styles.historyCode}>
-                        {item.code}
-                      </Text>
-                    </View>
-
-                    <View style={styles.historyFooter}>
-                      <Text style={styles.historyXp}>
-                        XP ganho: {item.xpAwarded}
-                      </Text>
-
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.useHistoryButton,
-                          pressed && styles.cardPressed
-                        ]}
-                        onPress={() => handleUseHistoryItem(item)}
-                      >
-                        <Text style={styles.useHistoryButtonText}>
-                          Reutilizar
-                        </Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ))}
-              </View>
+              <View
+                style={[
+                  styles.statusDot,
+                  { backgroundColor: runnerStatus === 'ready' ? '#22C55E' : colors.danger }
+                ]}
+              />
             )}
-          </View>
-
-          <View style={styles.noticeCard}>
-            <Text style={styles.noticeTitle}>Observação</Text>
-            <Text style={styles.noticeText}>
-              O laboratório executa Python real. Nesta versão, comandos com input() ainda não funcionam de forma interativa.
+            <Text style={styles.statusText}>
+              {runnerStatus === 'ready'
+                ? 'Python pronto'
+                : runnerStatus === 'loading'
+                  ? 'Carregando Python...'
+                  : 'Python indisponível'}
             </Text>
           </View>
+
+          <Text style={styles.xpText}>
+            <Ionicons name="flash" size={13} color={colors.accent} /> {todayXp}/
+            {PLAYGROUND_DAILY_XP_LIMIT} XP hoje
+          </Text>
+        </View>
+
+        <ProgressBar
+          value={toPercent(todayXp, PLAYGROUND_DAILY_XP_LIMIT)}
+          height={6}
+          color={colors.accent}
+          trackColor="rgba(255,255,255,0.14)"
+        />
+        <Text style={styles.statusHint}>
+          Ganhe {PLAYGROUND_XP_PER_RUN} XP a cada programa novo que roda sem erros.
+        </Text>
+
+        {runnerStatus === 'error' ? (
+          <AppButton title="Tentar carregar de novo" icon="refresh" compact onPress={handleReloadRunner} />
+        ) : null}
+      </View>
+
+      <SectionHeader title="Exemplos" subtitle="Toque para carregar no editor" />
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.examplesRow}
+      >
+        {PLAYGROUND_EXAMPLES.map((example) => (
+          <Pressable
+            key={example.title}
+            accessibilityRole="button"
+            accessibilityLabel={`Carregar exemplo ${example.title}`}
+            style={({ pressed }) => [styles.exampleChip, pressed && styles.pressed]}
+            onPress={() => loadExample(example)}
+          >
+            <Ionicons name="code-slash" size={14} color={colors.secondaryDark} />
+            <Text style={styles.exampleText}>{example.title}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
+      <View style={styles.editorCard}>
+        <View style={styles.editorHeader}>
+          <Text style={styles.editorFile}>main.py</Text>
+          <Pressable
+            onPress={() => setCode('')}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Apagar todo o código"
+          >
+            <Text style={styles.editorAction}>Limpar</Text>
+          </Pressable>
+        </View>
+
+        <TextInput
+          value={code}
+          onChangeText={setCode}
+          selection={forcedSelection}
+          onSelectionChange={handleSelectionChange}
+          multiline
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+          textAlignVertical="top"
+          style={styles.editor}
+          placeholder="# Escreva seu código aqui"
+          placeholderTextColor="#64748B"
+          accessibilityLabel="Editor de código Python"
+        />
+
+        <ScrollView
+          horizontal
+          keyboardShouldPersistTaps="always"
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.shortcutsRow}
+        >
+          {EDITOR_SHORTCUTS.map((symbol) => (
+            <Pressable
+              key={symbol}
+              onPress={() => insertShortcut(symbol)}
+              accessibilityLabel={symbol === 'TAB' ? 'Inserir recuo' : `Inserir ${symbol}`}
+              style={({ pressed }) => [styles.shortcutKey, pressed && styles.shortcutKeyPressed]}
+            >
+              <Text style={styles.shortcutText}>{symbol === 'TAB' ? '⇥' : symbol}</Text>
+            </Pressable>
+          ))}
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
+
+      <Pressable
+        onPress={() => setShowInputs((current) => !current)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: showInputs }}
+        style={styles.inputsToggle}
+      >
+        <Ionicons name="keypad-outline" size={18} color={colors.textSecondary} />
+        <Text style={styles.inputsToggleText}>
+          Entradas para input() {inputs ? `(${inputs.split('\n').length})` : ''}
+        </Text>
+        <Ionicons name={showInputs ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
+      </Pressable>
+
+      {showInputs ? (
+        <TextInput
+          value={inputs}
+          onChangeText={setInputs}
+          multiline
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder={'Uma resposta por linha.\nEx.: Ana\n16'}
+          placeholderTextColor={colors.muted}
+          style={styles.inputsField}
+          accessibilityLabel="Entradas para o input, uma por linha"
+        />
+      ) : null}
+
+      <View style={styles.actionsRow}>
+        <AppButton
+          title="Reiniciar sessão"
+          variant="ghost"
+          icon="refresh"
+          compact
+          disabled={runnerStatus !== 'ready' || isRunning}
+          onPress={() => runnerRef.current?.resetSession()}
+          style={styles.actionButton}
+        />
+        <AppButton
+          title={isRunning ? 'Executando' : 'Executar'}
+          icon="play"
+          loading={isRunning}
+          disabled={runnerStatus !== 'ready'}
+          onPress={handleRun}
+          style={styles.actionButton}
+        />
+      </View>
+
+      <View style={styles.outputCard}>
+        <View style={styles.outputHeader}>
+          <Text style={styles.outputTitle}>Saída</Text>
+          {outputStatus === 'success' ? <Tag label="Sucesso" tone="success" icon="checkmark" /> : null}
+          {outputStatus === 'error' ? <Tag label="Erro" tone="danger" icon="alert" /> : null}
+          {lastXpAwarded > 0 ? <Tag label={`+${lastXpAwarded} XP`} tone="warning" icon="flash" /> : null}
+        </View>
+
+        <Text
+          style={[styles.outputText, outputStatus === 'error' && styles.outputTextError]}
+          selectable
+        >
+          {output}
+        </Text>
+
+        {isSlowRun ? (
+          <View style={styles.slowBox}>
+            <Text style={styles.slowText}>
+              Está demorando muito. Pode ser um loop infinito (um while que nunca termina).
+            </Text>
+            <AppButton title="Parar e reiniciar Python" variant="danger" compact onPress={handleReloadRunner} />
+          </View>
+        ) : null}
+      </View>
+
+      {reviewTips.length > 0 ? (
+        <View style={[styles.tipsCard, outputStatus === 'error' && styles.tipsCardError]}>
+          <View style={styles.tipsHeader}>
+            <Ionicons
+              name={outputStatus === 'error' ? 'bug' : 'bulb'}
+              size={20}
+              color={outputStatus === 'error' ? colors.dangerText : colors.secondaryDark}
+            />
+            <Text style={[styles.tipsTitle, outputStatus === 'error' && styles.tipsTitleError]}>
+              {outputStatus === 'error' ? 'Como corrigir' : 'Dica'}
+            </Text>
+          </View>
+          {reviewTips.map((tip) => (
+            <Text key={tip} style={styles.tipText}>
+              {tip}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={styles.historyHeader}>
+        <SectionHeader title="Histórico" subtitle={`${history.length} execuções salvas`} />
+        {history.length > 0 ? (
+          <Pressable onPress={confirmClearHistory} hitSlop={10} accessibilityRole="button">
+            <Text style={styles.clearHistory}>Limpar</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {history.length === 0 ? (
+        <Text style={styles.emptyHistory}>
+          Seus códigos executados aparecem aqui para você reutilizar depois.
+        </Text>
+      ) : (
+        visibleHistory.map((item) => (
+          <Pressable
+            key={item.id}
+            accessibilityRole="button"
+            accessibilityHint="Carrega este código no editor"
+            onPress={() => loadHistoryItem(item)}
+            style={({ pressed }) => [styles.historyItem, pressed && styles.pressed]}
+          >
+            <View style={styles.historyTop}>
+              <Tag
+                label={item.status === 'success' ? 'Sucesso' : 'Erro'}
+                tone={item.status === 'success' ? 'success' : 'danger'}
+              />
+              <Text style={styles.historyDate}>{formatDate(item.createdAt)}</Text>
+            </View>
+            <CodeBlock code={item.code} numberOfLines={3} />
+          </Pressable>
+        ))
+      )}
+
+      {history.length > HISTORY_PREVIEW_COUNT ? (
+        <AppButton
+          title={showAllHistory ? 'Mostrar menos' : `Ver todas (${history.length})`}
+          variant="ghost"
+          compact
+          onPress={() => setShowAllHistory((current) => !current)}
+        />
+      ) : null}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  keyboard: {
-    flex: 1
-  },
-  scrollContent: {
-    paddingBottom: spacing.xl
-  },
-  hero: {
-    backgroundColor: '#111827',
-    borderRadius: 30,
-    padding: 22,
-    marginBottom: spacing.md,
-    shadowColor: '#111827',
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: {
-      width: 0,
-      height: 12
-    },
-    elevation: 5
-  },
-  heroTop: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    alignItems: 'center'
-  },
-  heroIcon: {
-    width: 68,
-    height: 68,
-    borderRadius: 24,
-    backgroundColor: '#FACC15',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  heroIconText: {
-    color: '#111827',
-    fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: -1
-  },
-  heroTextArea: {
-    flex: 1
-  },
-  heroLabel: {
-    color: '#D1D5DB',
-    fontSize: 13,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    marginBottom: 4
-  },
-  heroTitle: {
-    color: '#FFFFFF',
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: '900',
-    letterSpacing: -0.8
-  },
-  heroSubtitle: {
-    color: '#D1D5DB',
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 6
+  statusCard: {
+    backgroundColor: colors.ink,
+    borderRadius: radius.xl,
+    padding: spacing.md,
+    gap: spacing.sm,
+    ...shadow.raised
   },
   statusRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: 18
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm
   },
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8
+    gap: 8
   },
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 999
+    width: 10,
+    height: 10,
+    borderRadius: 5
   },
-  statusDotReady: {
-    backgroundColor: '#22C55E'
-  },
-  statusDotLoading: {
-    backgroundColor: '#FACC15'
-  },
-  statusPillText: {
+  statusText: {
     color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800'
+  },
+  xpText: {
+    color: colors.accent,
     fontSize: 13,
-    fontWeight: '900'
+    fontWeight: '800'
   },
-  xpCard: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 24,
-    padding: spacing.lg,
-    marginBottom: spacing.lg
-  },
-  xpHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm
-  },
-  xpTitle: {
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '900'
-  },
-  xpValue: {
-    color: '#16A34A',
-    fontSize: 17,
-    fontWeight: '900'
-  },
-  xpTrack: {
-    height: 9,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 999,
-    overflow: 'hidden'
-  },
-  xpFill: {
-    height: '100%',
-    backgroundColor: '#16A34A',
-    borderRadius: 999
-  },
-  xpHint: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 19,
-    marginTop: spacing.sm
-  },
-  lastXpBox: {
-    backgroundColor: '#ECFDF5',
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    borderRadius: 16,
-    padding: spacing.sm,
-    marginTop: spacing.md
-  },
-  lastXpText: {
-    color: '#166534',
-    fontSize: 13,
-    fontWeight: '900',
-    textAlign: 'center'
-  },
-  sectionHeader: {
-    marginBottom: spacing.sm
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.4
-  },
-  sectionSubtitle: {
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: 2
+  statusHint: {
+    color: colors.inkText,
+    fontSize: 12,
+    lineHeight: 17
   },
   examplesRow: {
-    gap: spacing.sm,
-    paddingBottom: spacing.lg
+    gap: spacing.xs,
+    paddingBottom: spacing.md
   },
-  exampleCard: {
-    width: 132,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 20,
-    padding: spacing.md
+  exampleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.secondarySoft,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    minHeight: 40
   },
-  exampleIcon: {
-    color: '#2563EB',
-    fontSize: 22,
-    fontWeight: '900',
-    marginBottom: spacing.sm
+  exampleText: {
+    color: colors.secondaryDark,
+    fontSize: 14,
+    fontWeight: '800'
   },
-  exampleTitle: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '900'
+  editorCard: {
+    backgroundColor: colors.codeBg,
+    borderRadius: radius.lg,
+    overflow: 'hidden'
   },
-  card: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 26,
-    padding: spacing.lg,
-    marginBottom: spacing.lg
-  },
-  cardHeader: {
+  editorHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: spacing.md,
-    alignItems: 'flex-start',
-    marginBottom: spacing.md
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.inkSoft
   },
-  cardTitle: {
-    color: colors.text,
-    fontSize: 21,
-    fontWeight: '900',
-    letterSpacing: -0.3
-  },
-  cardSubtitle: {
-    color: colors.muted,
+  editorFile: {
+    color: colors.inkText,
+    fontFamily: monoFont,
     fontSize: 13,
-    fontWeight: '700',
-    marginTop: 3
+    fontWeight: '700'
   },
-  ghostButton: {
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 9
-  },
-  ghostButtonText: {
-    color: '#374151',
+  editorAction: {
+    color: '#FCA5A5',
     fontSize: 13,
-    fontWeight: '900'
+    fontWeight: '800'
   },
   editor: {
-    minHeight: 280,
-    backgroundColor: '#0F172A',
-    color: '#E5E7EB',
-    borderRadius: 20,
+    minHeight: 220,
+    color: colors.codeText,
     padding: spacing.md,
-    fontSize: 14,
-    lineHeight: 21,
-    fontFamily: Platform.select({
-      ios: 'Menlo',
-      android: 'monospace',
-      default: 'monospace'
-    })
+    fontSize: 15,
+    lineHeight: 22,
+    fontFamily: monoFont
   },
-  editorActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.md
+  shortcutsRow: {
+    gap: 6,
+    padding: spacing.xs,
+    backgroundColor: colors.inkSoft
   },
-  secondaryActionButton: {
-    flex: 1,
-    minHeight: 52,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  secondaryActionText: {
-    color: '#374151',
-    fontSize: 14,
-    fontWeight: '900'
-  },
-  runButton: {
-    flex: 1,
-    minHeight: 52,
-    backgroundColor: '#16A34A',
-    borderRadius: 17,
+  shortcutKey: {
+    minWidth: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#16A34A',
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    shadowOffset: {
-      width: 0,
-      height: 8
-    },
-    elevation: 3
+    paddingHorizontal: 8
   },
-  runButtonText: {
+  shortcutKeyPressed: {
+    backgroundColor: colors.secondary
+  },
+  shortcutText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900'
+    fontFamily: monoFont,
+    fontSize: 16,
+    fontWeight: '700'
   },
-  outputButtons: {
+  inputsToggle: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 48,
+    marginTop: spacing.sm
+  },
+  inputsToggleText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  inputsField: {
+    minHeight: 80,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    color: colors.text,
+    fontFamily: monoFont,
+    fontSize: 14,
+    textAlignVertical: 'top',
+    marginBottom: spacing.sm
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs
+  },
+  actionButton: {
+    flex: 1,
+    minHeight: 52
+  },
+  outputCard: {
+    backgroundColor: '#020617',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    minHeight: 130,
     gap: spacing.sm
   },
-  outputBox: {
-    minHeight: 170,
-    backgroundColor: '#020617',
-    borderRadius: 20,
-    padding: spacing.md
+  outputHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs
+  },
+  outputTitle: {
+    flex: 1,
+    color: colors.inkText,
+    fontSize: 14,
+    fontWeight: '800',
+    fontFamily: monoFont
   },
   outputText: {
-    color: '#D1FAE5',
+    color: colors.codeOutput,
     fontSize: 14,
     lineHeight: 21,
-    fontFamily: Platform.select({
-      ios: 'Menlo',
-      android: 'monospace',
-      default: 'monospace'
-    })
+    fontFamily: monoFont
   },
-  reviewCard: {
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    borderRadius: 24,
-    padding: spacing.lg,
-    marginBottom: spacing.lg
+  outputTextError: {
+    color: '#FCA5A5'
   },
-  reviewHeader: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    alignItems: 'center',
-    marginBottom: spacing.md
+  slowBox: {
+    backgroundColor: 'rgba(220,38,38,0.12)',
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    gap: spacing.sm
   },
-  reviewIcon: {
-    fontSize: 30
-  },
-  reviewTextArea: {
-    flex: 1
-  },
-  reviewTitle: {
-    color: '#1D4ED8',
-    fontSize: 18,
-    fontWeight: '900'
-  },
-  reviewSubtitle: {
-    color: '#1E40AF',
+  slowText: {
+    color: '#FECACA',
     fontSize: 13,
-    fontWeight: '700',
-    marginTop: 2
+    lineHeight: 19
   },
-  tipsList: {
+  tipsCard: {
+    backgroundColor: colors.secondarySoft,
+    borderWidth: 1,
+    borderColor: colors.secondaryBorder,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginTop: spacing.md,
     gap: 6
   },
-  reviewText: {
-    color: '#1E3A8A',
+  tipsCardError: {
+    backgroundColor: '#FEF2F2',
+    borderColor: colors.dangerBorder
+  },
+  tipsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  tipsTitle: {
+    color: colors.secondaryDark,
+    fontSize: 16,
+    fontWeight: '800'
+  },
+  tipsTitleError: {
+    color: colors.dangerText
+  },
+  tipText: {
+    color: colors.textSecondary,
     fontSize: 14,
-    lineHeight: 21,
-    fontWeight: '600'
+    lineHeight: 21
   },
   historyHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md
+    justifyContent: 'space-between',
+    marginTop: spacing.md
   },
-  historyCount: {
-    color: colors.muted,
+  clearHistory: {
+    color: colors.danger,
     fontSize: 14,
-    fontWeight: '900'
+    fontWeight: '800'
   },
   emptyHistory: {
-    alignItems: 'center',
-    paddingVertical: spacing.lg
-  },
-  emptyHistoryIcon: {
-    fontSize: 40,
-    marginBottom: spacing.sm
-  },
-  emptyHistoryTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '900'
-  },
-  emptyHistoryText: {
     color: colors.muted,
     fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-    marginTop: 6
-  },
-  historyList: {
-    gap: spacing.md
+    lineHeight: 20
   },
   historyItem: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 20,
-    padding: spacing.md
-  },
-  historyItemTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.sm,
     gap: spacing.sm,
     marginBottom: spacing.sm
   },
-  historyStatusBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5
-  },
-  historyStatusSuccess: {
-    backgroundColor: '#DCFCE7'
-  },
-  historyStatusError: {
-    backgroundColor: '#FEE2E2'
-  },
-  historyStatusText: {
-    fontSize: 12,
-    fontWeight: '900'
-  },
-  historyStatusTextSuccess: {
-    color: '#166534'
-  },
-  historyStatusTextError: {
-    color: '#991B1B'
+  historyTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
   },
   historyDate: {
     color: colors.muted,
     fontSize: 12,
-    fontWeight: '800'
+    fontWeight: '700'
   },
-  historyCodeBox: {
-    backgroundColor: '#111827',
-    borderRadius: 16,
-    padding: spacing.sm,
-    marginBottom: spacing.sm
-  },
-  historyCode: {
-    color: '#E5E7EB',
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: Platform.select({
-      ios: 'Menlo',
-      android: 'monospace',
-      default: 'monospace'
-    })
-  },
-  historyFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: spacing.sm
-  },
-  historyXp: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '900'
-  },
-  useHistoryButton: {
-    backgroundColor: '#DBEAFE',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 9
-  },
-  useHistoryButtonText: {
-    color: '#1D4ED8',
-    fontSize: 13,
-    fontWeight: '900'
-  },
-  noticeCard: {
-    backgroundColor: '#FFFBEB',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    borderRadius: 22,
-    padding: spacing.lg
-  },
-  noticeTitle: {
-    color: '#92400E',
-    fontSize: 16,
-    fontWeight: '900',
-    marginBottom: 4
-  },
-  noticeText: {
-    color: '#92400E',
-    fontSize: 14,
-    lineHeight: 21,
-    fontWeight: '600'
-  },
-  disabledButton: {
-    opacity: 0.5
-  },
-  cardPressed: {
-    transform: [{ scale: 0.99 }],
-    opacity: 0.9
+  pressed: {
+    opacity: 0.85
   }
 });

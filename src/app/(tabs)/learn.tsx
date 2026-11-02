@@ -1,125 +1,83 @@
-import { router } from 'expo-router';
 import React, { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
-
+import { SectionHeader } from '@/components/SectionHeader';
+import { LearningErrorView, LearningLoadingView } from '@/components/StateView';
+import { Tag } from '@/components/Tag';
 import { useLearning } from '@/context/LearningContext';
-import { useProgress } from '@/store/progressStore';
+import { useProgress } from '@/features/progress/ProgressContext';
+import { isLessonUnlocked, toPercent } from '@/features/progress/progress.helpers';
+import { useTopicProgress } from '@/features/progress/useTopicProgress';
+import { colors, radius, shadow, spacing } from '@/theme/colors';
 
-import { colors, spacing } from '@/theme/colors';
+type LessonState = 'completed' | 'current' | 'open' | 'locked';
 
-function isLessonUnlockedFromApi(
-  lessonId: string,
-  orderedLessonIds: string[],
-  completedLessonIds: string[]
-) {
-  const lessonIndex = orderedLessonIds.indexOf(lessonId);
-
-  if (lessonIndex <= 0) {
-    return true;
-  }
-
-  const previousLessonId = orderedLessonIds[lessonIndex - 1];
-
-  return completedLessonIds.includes(previousLessonId);
-}
+const STATE_LABEL: Record<LessonState, string> = {
+  completed: 'Concluída',
+  current: 'Atual',
+  open: 'Aberta',
+  locked: 'Bloqueada'
+};
 
 export default function LearnScreen() {
-  const { progress } = useProgress();
+  const { progress, nextLessonId } = useProgress();
+  const { orderedLessonIds, lessonMap, isLearningLoading, learningError, reloadLearning } =
+    useLearning();
+  const topics = useTopicProgress();
 
-  const {
-    topics,
-    orderedLessonIds,
-    lessonMap,
-    isLearningLoading,
-    learningError,
-    reloadLearning
-  } = useLearning();
+  const completedSet = useMemo(
+    () => new Set(progress.completedLessonIds),
+    [progress.completedLessonIds]
+  );
 
-  const completedSet = useMemo(() => {
-    return new Set(progress.completedLessonIds);
-  }, [progress.completedLessonIds]);
+  const totalLessons = orderedLessonIds.length;
+  const completedLessons = orderedLessonIds.filter((id) => completedSet.has(id)).length;
+  const overallPercent = toPercent(completedLessons, totalLessons);
 
-  const allLessonIds = orderedLessonIds;
-
-  const totalLessons = allLessonIds.length;
-  const completedLessons = progress.completedLessonIds.length;
-
-  const overallPercent =
-    totalLessons === 0
-      ? 0
-      : Math.round((completedLessons / totalLessons) * 100);
-
-  const nextLessonId = useMemo(() => {
-    return allLessonIds.find((lessonId) => !completedSet.has(lessonId));
-  }, [allLessonIds, completedSet]);
-
-  const nextLesson = nextLessonId ? lessonMap[nextLessonId] : null;
-
-  function openLesson(lessonId: string) {
-    const unlocked = isLessonUnlockedFromApi(
-      lessonId,
-      orderedLessonIds,
-      progress.completedLessonIds
-    );
-
-    if (!unlocked) {
-      return;
-    }
-
-    router.push(`/lesson/${lessonId}`);
+  function getLessonState(lessonId: string): LessonState {
+    if (completedSet.has(lessonId)) return 'completed';
+    if (lessonId === nextLessonId) return 'current';
+    if (isLessonUnlocked(lessonId, progress.completedLessonIds, orderedLessonIds)) return 'open';
+    return 'locked';
   }
 
-  function openNextLesson() {
-    if (!nextLesson) {
-      return;
-    }
-
-    router.push(`/lesson/${nextLesson.id}`);
-  }
-
-  if (isLearningLoading) {
+  if (isLearningLoading && totalLessons === 0) {
     return (
       <Screen>
-        <View style={styles.centerState}>
-          <Text style={styles.centerEmoji}>🐍</Text>
-          <Text style={styles.centerTitle}>Carregando trilha...</Text>
-          <Text style={styles.centerText}>
-            Buscando módulos, missões e exercícios no servidor.
-          </Text>
-        </View>
+        <LearningLoadingView />
       </Screen>
     );
   }
 
-  if (learningError) {
+  if (learningError && totalLessons === 0) {
     return (
       <Screen>
-        <View style={styles.centerState}>
-          <Text style={styles.centerEmoji}>⚠️</Text>
-          <Text style={styles.centerTitle}>Não foi possível carregar</Text>
-          <Text style={styles.centerText}>{learningError}</Text>
-
-          <Pressable style={styles.retryButton} onPress={reloadLearning}>
-            <Text style={styles.retryButtonText}>Tentar novamente</Text>
-          </Pressable>
-        </View>
+        <LearningErrorView message={learningError} onRetry={reloadLearning} />
       </Screen>
     );
   }
 
   return (
-    <Screen>
+    <Screen
+      refreshControl={
+        <RefreshControl
+          refreshing={isLearningLoading}
+          onRefresh={reloadLearning}
+          colors={[colors.primary]}
+        />
+      }
+    >
       <View style={styles.heroCard}>
         <View style={styles.heroTopRow}>
           <View style={styles.heroTextArea}>
             <Text style={styles.heroLabel}>Trilha guiada</Text>
             <Text style={styles.heroTitle}>Aprenda Python por missões</Text>
             <Text style={styles.heroSubtitle}>
-              Siga a ordem das aulas, conclua desafios e desbloqueie novas
-              etapas.
+              Acerte pelo menos metade das perguntas para liberar a próxima missão.
             </Text>
           </View>
 
@@ -128,435 +86,185 @@ export default function LearnScreen() {
           </View>
         </View>
 
-        <View style={styles.heroProgressArea}>
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressLabel}>Progresso da trilha</Text>
-            <Text style={styles.progressValue}>
-              {completedLessons}/{totalLessons}
-            </Text>
-          </View>
-
-          <ProgressBar value={overallPercent} />
-        </View>
-      </View>
-
-      {nextLesson ? (
-        <Pressable
-          style={({ pressed }) => [
-            styles.continueCard,
-            pressed && styles.cardPressed
-          ]}
-          onPress={openNextLesson}
-        >
-          <View style={styles.continueIcon}>
-            <Text style={styles.continueIconText}>▶</Text>
-          </View>
-
-          <View style={styles.continueTextArea}>
-            <Text style={styles.continueLabel}>Continue agora</Text>
-            <Text style={styles.continueTitle}>{nextLesson.title}</Text>
-            <Text style={styles.continueSubtitle}>
-              {nextLesson.estimatedMinutes} min • {nextLesson.xp} XP
-            </Text>
-          </View>
-        </Pressable>
-      ) : (
-        <View style={styles.finishedCard}>
-          <Text style={styles.finishedEmoji}>🏆</Text>
-          <Text style={styles.finishedTitle}>Todas as missões concluídas</Text>
-          <Text style={styles.finishedText}>
-            Continue praticando no laboratório para reforçar seus conhecimentos.
-          </Text>
-        </View>
-      )}
-
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Módulos do curso</Text>
-        <Text style={styles.sectionSubtitle}>
-          Complete uma missão para liberar a próxima
+        <ProgressBar
+          value={overallPercent}
+          color={colors.accent}
+          trackColor="rgba(255,255,255,0.14)"
+          animated
+        />
+        <Text style={styles.heroProgressText}>
+          {completedLessons} de {totalLessons} missões concluídas
         </Text>
       </View>
 
-      {topics.map((topic, topicIndex) => {
-        const completedInTopic = topic.lessonIds.filter((lessonId) =>
-          completedSet.has(lessonId)
-        ).length;
-
-        const totalInTopic = topic.lessonIds.length;
-
-        const topicPercent =
-          totalInTopic === 0
-            ? 0
-            : Math.round((completedInTopic / totalInTopic) * 100);
-
-        const topicCompleted =
-          totalInTopic > 0 && completedInTopic === totalInTopic;
-
-        return (
-          <View key={topic.id} style={styles.topicBlock}>
-            <View style={styles.topicHeader}>
-              <View
-                style={[
-                  styles.topicIconBox,
-                  { backgroundColor: topic.color || colors.primary }
-                ]}
-              >
-                <Text style={styles.topicEmoji}>{topic.emoji}</Text>
-              </View>
-
-              <View style={styles.topicInfo}>
-                <View style={styles.topicTitleRow}>
-                  <Text style={styles.topicTitle}>{topic.title}</Text>
-
-                  <Text
-                    style={[
-                      styles.topicStatus,
-                      topicCompleted
-                        ? styles.topicStatusCompleted
-                        : styles.topicStatusActive
-                    ]}
-                  >
-                    {topicCompleted ? 'Concluído' : 'Em andamento'}
-                  </Text>
-                </View>
-
-                <Text style={styles.topicDescription}>
-                  {topic.description}
-                </Text>
-
-                <View style={styles.topicProgressFooter}>
-                  <View style={styles.topicProgressTrack}>
-                    <View
-                      style={[
-                        styles.topicProgressFill,
-                        {
-                          width: `${topicPercent}%`,
-                          backgroundColor: topic.color || colors.primary
-                        }
-                      ]}
-                    />
-                  </View>
-
-                  <Text style={styles.topicProgressText}>
-                    {completedInTopic}/{totalInTopic} missões
-                  </Text>
-                </View>
-              </View>
+      {topics.map((topic) => (
+        <View key={topic.id} style={styles.topicBlock}>
+          <View style={styles.topicHeader}>
+            <View style={[styles.topicIconBox, { backgroundColor: `${topic.color}22` }]}>
+              <Text style={styles.topicEmoji}>{topic.emoji}</Text>
             </View>
 
-            <View style={styles.lessonPath}>
-              {topic.lessonIds.map((lessonId, index) => {
-                const lesson = lessonMap[lessonId];
+            <View style={styles.topicInfo}>
+              <Text style={styles.topicModule}>Módulo {topic.index + 1}</Text>
+              <Text style={styles.topicTitle} accessibilityRole="header">
+                {topic.title}
+              </Text>
+              <Text style={styles.topicDescription}>{topic.description}</Text>
 
-                if (!lesson) {
-                  return null;
-                }
-
-                const completed = completedSet.has(lessonId);
-
-                const unlocked = isLessonUnlockedFromApi(
-                  lessonId,
-                  orderedLessonIds,
-                  progress.completedLessonIds
-                );
-
-                const isCurrent = nextLessonId === lessonId;
-                const isLastLesson = index === topic.lessonIds.length - 1;
-
-                return (
-                  <View key={lessonId} style={styles.lessonRow}>
-                    {!isLastLesson ? <View style={styles.pathLine} /> : null}
-
-                    <View
-                      style={[
-                        styles.pathNode,
-                        completed && styles.pathNodeCompleted,
-                        isCurrent && styles.pathNodeCurrent,
-                        !unlocked && styles.pathNodeLocked
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.pathNodeText,
-                          !unlocked && styles.pathNodeTextLocked
-                        ]}
-                      >
-                        {completed ? '✓' : !unlocked ? '⌛' : index + 1}
-                      </Text>
-                    </View>
-
-                    <Pressable
-                      disabled={!unlocked}
-                      onPress={() => openLesson(lessonId)}
-                      style={({ pressed }) => [
-                        styles.lessonCard,
-                        completed && styles.lessonCardCompleted,
-                        isCurrent && styles.lessonCardCurrent,
-                        !unlocked && styles.lessonCardLocked,
-                        pressed && unlocked && styles.cardPressed
-                      ]}
-                    >
-                      <View style={styles.lessonCardTop}>
-                        <View style={styles.lessonTitleArea}>
-                          <Text
-                            style={[
-                              styles.lessonTitle,
-                              !unlocked && styles.lessonTitleLocked
-                            ]}
-                          >
-                            {lesson.title}
-                          </Text>
-
-                          <Text
-                            style={[
-                              styles.lessonSubtitle,
-                              !unlocked && styles.lessonSubtitleLocked
-                            ]}
-                          >
-                            {lesson.subtitle}
-                          </Text>
-                        </View>
-
-                        <Text
-                          style={[
-                            styles.lessonStatus,
-                            completed && styles.lessonStatusCompleted,
-                            isCurrent && styles.lessonStatusCurrent,
-                            !unlocked && styles.lessonStatusLocked
-                          ]}
-                        >
-                          {completed
-                            ? 'Feita'
-                            : isCurrent
-                              ? 'Atual'
-                              : unlocked
-                                ? 'Aberta'
-                                : 'Bloqueada'}
-                        </Text>
-                      </View>
-
-                      <View style={styles.lessonMetaRow}>
-                        <Text style={styles.lessonMeta}>
-                          ⏱ {lesson.estimatedMinutes} min
-                        </Text>
-
-                        <Text style={styles.lessonMeta}>
-                          ⚡ {lesson.xp} XP
-                        </Text>
-
-                        <Text style={styles.lessonMeta}>
-                          Módulo {topicIndex + 1}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  </View>
-                );
-              })}
+              <View style={styles.topicProgressRow}>
+                <View style={styles.topicProgressBar}>
+                  <ProgressBar value={topic.percent} height={8} color={topic.color} />
+                </View>
+                <Text style={styles.topicProgressText}>
+                  {topic.completedCount}/{topic.totalCount}
+                </Text>
+              </View>
             </View>
           </View>
-        );
-      })}
+
+          <View style={styles.lessonPath}>
+            {topic.lessonIds.map((lessonId, index) => {
+              const lesson = lessonMap[lessonId];
+
+              if (!lesson) {
+                return null;
+              }
+
+              const state = getLessonState(lessonId);
+              const locked = state === 'locked';
+              const isLast = index === topic.lessonIds.length - 1;
+
+              return (
+                <View key={lessonId} style={styles.lessonRow}>
+                  {!isLast ? (
+                    <View
+                      style={[
+                        styles.pathLine,
+                        state === 'completed' && { backgroundColor: colors.primaryBorder }
+                      ]}
+                    />
+                  ) : null}
+
+                  <View style={[styles.pathNode, styles[`node_${state}`]]}>
+                    {state === 'completed' ? (
+                      <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+                    ) : locked ? (
+                      <Ionicons name="lock-closed" size={16} color={colors.muted} />
+                    ) : (
+                      <Text style={styles.pathNodeText}>{index + 1}</Text>
+                    )}
+                  </View>
+
+                  <Pressable
+                    disabled={locked}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${lesson.title}. ${STATE_LABEL[state]}`}
+                    accessibilityState={{ disabled: locked }}
+                    onPress={() => router.push(`/lesson/${lessonId}`)}
+                    style={({ pressed }) => [
+                      styles.lessonCard,
+                      state === 'current' && styles.lessonCardCurrent,
+                      locked && styles.lessonCardLocked,
+                      pressed && styles.pressed
+                    ]}
+                  >
+                    <View style={styles.lessonCardTop}>
+                      <Text
+                        style={[styles.lessonTitle, locked && styles.lockedText]}
+                        numberOfLines={2}
+                      >
+                        {lesson.title}
+                      </Text>
+                      {state === 'current' ? (
+                        <Tag label="Atual" tone="info" icon="play" />
+                      ) : null}
+                    </View>
+
+                    <Text style={styles.lessonSubtitle} numberOfLines={2}>
+                      {lesson.subtitle}
+                    </Text>
+
+                    <View style={styles.lessonMetaRow}>
+                      <Tag label={`${lesson.estimatedMinutes} min`} icon="time-outline" />
+                      <Tag
+                        label={`${lesson.xp} XP`}
+                        tone={state === 'completed' ? 'success' : 'warning'}
+                        icon={state === 'completed' ? 'checkmark' : 'flash'}
+                      />
+                    </View>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ))}
+
+      {topics.length === 0 ? (
+        <SectionHeader
+          title="Nenhum módulo disponível"
+          subtitle="Puxe a tela para baixo para atualizar."
+        />
+      ) : null}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  centerState: {
-    flex: 1,
-    minHeight: 500,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg
-  },
-  centerEmoji: {
-    fontSize: 48,
-    marginBottom: spacing.md
-  },
-  centerTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '900',
-    textAlign: 'center'
-  },
-  centerText: {
-    color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center',
-    marginTop: spacing.sm
-  },
-  retryButton: {
-    backgroundColor: '#16A34A',
-    borderRadius: 16,
-    paddingHorizontal: 22,
-    paddingVertical: 13,
-    marginTop: spacing.lg
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '900'
-  },
   heroCard: {
-    backgroundColor: '#111827',
-    borderRadius: 30,
-    padding: 22,
-    marginBottom: spacing.md,
-    shadowColor: '#111827',
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: {
-      width: 0,
-      height: 12
-    },
-    elevation: 5
+    backgroundColor: colors.ink,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+    ...shadow.raised
   },
   heroTopRow: {
     flexDirection: 'row',
     gap: spacing.md,
-    alignItems: 'flex-start'
+    alignItems: 'flex-start',
+    marginBottom: spacing.xs
   },
   heroTextArea: {
     flex: 1
   },
   heroLabel: {
-    color: '#D1D5DB',
-    fontSize: 13,
-    fontWeight: '900',
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '800',
     textTransform: 'uppercase',
-    marginBottom: 6
+    marginBottom: 4
   },
   heroTitle: {
     color: '#FFFFFF',
-    fontSize: 29,
-    lineHeight: 34,
+    fontSize: 24,
+    lineHeight: 30,
     fontWeight: '900',
-    letterSpacing: -0.8
+    letterSpacing: -0.5
   },
   heroSubtitle: {
-    color: '#D1D5DB',
+    color: colors.inkText,
     fontSize: 14,
-    lineHeight: 21,
-    marginTop: 8
+    lineHeight: 20,
+    marginTop: 6
   },
   heroBadge: {
     width: 62,
     height: 62,
-    borderRadius: 22,
-    backgroundColor: '#FACC15',
+    borderRadius: radius.lg,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center'
   },
   heroBadgeText: {
-    color: '#111827',
+    color: colors.ink,
     fontSize: 17,
     fontWeight: '900'
   },
-  heroProgressArea: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 22,
-    padding: spacing.md,
-    marginTop: spacing.lg
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm
-  },
-  progressLabel: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900'
-  },
-  progressValue: {
-    color: '#FACC15',
-    fontSize: 14,
-    fontWeight: '900'
-  },
-  continueCard: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 26,
-    padding: spacing.lg,
-    flexDirection: 'row',
-    gap: spacing.md,
-    alignItems: 'center',
-    marginBottom: spacing.lg
-  },
-  continueIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
-    backgroundColor: '#DCFCE7',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  continueIconText: {
-    color: '#16A34A',
-    fontSize: 20,
-    fontWeight: '900'
-  },
-  continueTextArea: {
-    flex: 1
-  },
-  continueLabel: {
-    color: colors.muted,
+  heroProgressText: {
+    color: colors.inkText,
     fontSize: 13,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    marginBottom: 3
-  },
-  continueTitle: {
-    color: colors.text,
-    fontSize: 19,
-    fontWeight: '900'
-  },
-  continueSubtitle: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: 4
-  },
-  finishedCard: {
-    backgroundColor: '#FFFBEB',
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    borderRadius: 26,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-    alignItems: 'center'
-  },
-  finishedEmoji: {
-    fontSize: 38,
-    marginBottom: spacing.sm
-  },
-  finishedTitle: {
-    color: '#92400E',
-    fontSize: 19,
-    fontWeight: '900'
-  },
-  finishedText: {
-    color: '#92400E',
-    fontSize: 14,
-    lineHeight: 21,
-    textAlign: 'center',
-    marginTop: 6
-  },
-  sectionHeader: {
-    marginBottom: spacing.sm
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.4
-  },
-  sectionSubtitle: {
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: 2
+    fontWeight: '700'
   },
   topicBlock: {
     marginBottom: spacing.lg
@@ -564,17 +272,17 @@ const styles = StyleSheet.create({
   topicHeader: {
     flexDirection: 'row',
     backgroundColor: colors.card,
-    borderRadius: 26,
-    padding: spacing.lg,
+    borderRadius: radius.xl,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
     gap: spacing.md,
     marginBottom: spacing.md
   },
   topicIconBox: {
-    width: 58,
-    height: 58,
-    borderRadius: 20,
+    width: 56,
+    height: 56,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -584,190 +292,128 @@ const styles = StyleSheet.create({
   topicInfo: {
     flex: 1
   },
-  topicTitleRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    alignItems: 'center',
-    flexWrap: 'wrap'
+  topicModule: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase'
   },
   topicTitle: {
     color: colors.text,
-    fontSize: 20,
-    fontWeight: '900'
-  },
-  topicStatus: {
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    fontSize: 11,
-    fontWeight: '900',
-    overflow: 'hidden'
-  },
-  topicStatusCompleted: {
-    backgroundColor: '#DCFCE7',
-    color: '#166534'
-  },
-  topicStatusActive: {
-    backgroundColor: '#DBEAFE',
-    color: '#1D4ED8'
+    fontSize: 19,
+    fontWeight: '800',
+    marginTop: 2
   },
   topicDescription: {
     color: colors.muted,
     fontSize: 14,
     lineHeight: 20,
-    marginTop: 6
+    marginTop: 4
   },
-  topicProgressFooter: {
-    marginTop: spacing.md
+  topicProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm
   },
-  topicProgressTrack: {
-    height: 8,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 999,
-    overflow: 'hidden'
-  },
-  topicProgressFill: {
-    height: '100%',
-    borderRadius: 999
+  topicProgressBar: {
+    flex: 1
   },
   topicProgressText: {
-    color: colors.muted,
+    color: colors.textSecondary,
     fontSize: 12,
-    fontWeight: '800',
-    marginTop: 6
+    fontWeight: '800'
   },
   lessonPath: {
     gap: spacing.sm
   },
   lessonRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    alignItems: 'stretch'
+    gap: spacing.sm
   },
   pathLine: {
     position: 'absolute',
     left: 19,
-    top: 42,
+    top: 56,
     bottom: -14,
     width: 3,
     borderRadius: 999,
     backgroundColor: colors.border
   },
   pathNode: {
-    width: 40,
-    height: 40,
-    borderRadius: 15,
-    backgroundColor: colors.primary,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 2,
-    marginTop: spacing.md
+    marginTop: spacing.sm,
+    borderWidth: 3,
+    borderColor: colors.background
   },
-  pathNodeCompleted: {
-    backgroundColor: '#16A34A'
+  node_completed: {
+    backgroundColor: colors.primary
   },
-  pathNodeCurrent: {
-    backgroundColor: '#2563EB'
+  node_current: {
+    backgroundColor: colors.secondary
   },
-  pathNodeLocked: {
-    backgroundColor: '#E5E7EB'
+  node_open: {
+    backgroundColor: colors.primaryDark
+  },
+  node_locked: {
+    backgroundColor: colors.surfaceMuted
   },
   pathNodeText: {
     color: '#FFFFFF',
     fontWeight: '900',
-    fontSize: 14
-  },
-  pathNodeTextLocked: {
-    color: '#6B7280'
+    fontSize: 15
   },
   lessonCard: {
     flex: 1,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 24,
-    padding: spacing.md
-  },
-  lessonCardCompleted: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#BBF7D0'
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    gap: 6
   },
   lessonCardCurrent: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#BFDBFE'
+    borderColor: colors.secondary,
+    borderWidth: 2,
+    backgroundColor: '#F8FAFF'
   },
   lessonCardLocked: {
-    backgroundColor: '#F9FAFB',
-    borderColor: '#E5E7EB',
-    opacity: 0.74
+    backgroundColor: colors.surfaceMuted,
+    opacity: 0.75
   },
   lessonCardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     gap: spacing.sm
   },
-  lessonTitleArea: {
-    flex: 1
-  },
   lessonTitle: {
+    flex: 1,
     color: colors.text,
     fontSize: 16,
     lineHeight: 21,
-    fontWeight: '900'
+    fontWeight: '800'
   },
-  lessonTitleLocked: {
-    color: '#6B7280'
+  lockedText: {
+    color: colors.muted
   },
   lessonSubtitle: {
     color: colors.muted,
     fontSize: 13,
-    lineHeight: 19,
-    marginTop: 4
-  },
-  lessonSubtitleLocked: {
-    color: '#9CA3AF'
-  },
-  lessonStatus: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#DBEAFE',
-    color: '#1D4ED8',
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    fontSize: 11,
-    fontWeight: '900',
-    overflow: 'hidden'
-  },
-  lessonStatusCompleted: {
-    backgroundColor: '#DCFCE7',
-    color: '#166534'
-  },
-  lessonStatusCurrent: {
-    backgroundColor: '#DBEAFE',
-    color: '#1D4ED8'
-  },
-  lessonStatusLocked: {
-    backgroundColor: '#F3F4F6',
-    color: '#6B7280'
+    lineHeight: 19
   },
   lessonMetaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md
+    gap: spacing.xs,
+    marginTop: 4
   },
-  lessonMeta: {
-    backgroundColor: '#F3F4F6',
-    color: '#374151',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 12,
-    fontWeight: '900',
-    overflow: 'hidden'
-  },
-  cardPressed: {
-    transform: [{ scale: 0.99 }],
-    opacity: 0.92
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }]
   }
 });

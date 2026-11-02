@@ -10,42 +10,44 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSegments } from 'expo-router';
 
-import { colors, spacing } from '@/theme/colors';
 import { getScreenBottomPadding } from '@/constants/layout';
+import { colors, spacing } from '@/theme/colors';
 
 type ScreenProps = PropsWithChildren<{
   scroll?: boolean;
+  // Use em telas sem cabeçalho para respeitar a barra de status.
+  safeTop?: boolean;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: ScrollViewProps['contentContainerStyle'];
+  refreshControl?: ScrollViewProps['refreshControl'];
 }>;
 
 export function Screen({
   children,
   scroll = true,
+  safeTop = false,
   style,
-  contentContainerStyle
+  contentContainerStyle,
+  refreshControl
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
   const segments = useSegments();
 
-  const isInsideTabs = segments.includes('(tabs)');
+  const isInsideTabs = (segments as string[]).includes('(tabs)');
 
-  const bottomPadding = isInsideTabs
+  const paddingTop = safeTop ? insets.top : 0;
+  const paddingBottom = isInsideTabs
     ? getScreenBottomPadding(insets.bottom)
-    : Math.max(insets.bottom, spacing.lg);
+    : Math.max(insets.bottom, spacing.md);
 
   if (!scroll) {
     return (
       <View
         style={[
           styles.container,
-          {
-            paddingTop: insets.top
-          },
-          style,
-          {
-            paddingBottom: bottomPadding
-          }
+          styles.padded,
+          { paddingTop: paddingTop + spacing.sm, paddingBottom },
+          style
         ]}
       >
         {children}
@@ -54,23 +56,16 @@ export function Screen({
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: 0
-        },
-        style
-      ]}
-    >
+    <View style={[styles.container, { paddingTop }, style]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        refreshControl={refreshControl}
         contentContainerStyle={[
           styles.scrollContent,
-          {
-            paddingBottom: bottomPadding
-          },
+          styles.padded,
+          { paddingBottom },
           contentContainerStyle
         ]}
       >
@@ -85,8 +80,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background
   },
+  padded: {
+    paddingHorizontal: spacing.md
+  },
   scrollContent: {
     flexGrow: 1,
-    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm
   }
 });
