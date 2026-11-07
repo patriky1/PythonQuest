@@ -155,6 +155,18 @@ export default function RegisterScreen() {
 
       <AppButton title="Criar conta" onPress={handleRegister} loading={isSubmitting} />
 
+      <Text style={styles.privacyNotice}>
+        Ao criar uma conta, você concorda com a{' '}
+        <Text
+          style={styles.privacyLink}
+          accessibilityRole="link"
+          onPress={() => router.push('/privacy')}
+        >
+          Política de Privacidade
+        </Text>
+        .
+      </Text>
+
       <View style={styles.switchRow}>
         <Text style={styles.switchText}>Já tem uma conta?</Text>
         <AppButton
@@ -176,6 +188,17 @@ const styles = StyleSheet.create({
   strengthText: {
     fontSize: 12,
     fontWeight: '800'
+  },
+  privacyNotice: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center'
+  },
+  privacyLink: {
+    color: colors.secondaryDark,
+    fontWeight: '800',
+    textDecorationLine: 'underline'
   },
   switchRow: {
     flexDirection: 'row',

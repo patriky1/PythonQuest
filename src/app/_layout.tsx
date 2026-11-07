@@ -54,6 +54,7 @@ export default function RootLayout() {
                 options={{ title: 'PythonQuest Adventure' }}
               />
               <Stack.Screen name="lesson/[lessonId]" options={{ title: 'Missão' }} />
+              <Stack.Screen name="privacy" options={{ title: 'Política de Privacidade' }} />
               <Stack.Screen
                 name="result/[lessonId]"
                 options={{

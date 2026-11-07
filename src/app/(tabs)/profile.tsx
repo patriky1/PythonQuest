@@ -191,6 +191,13 @@ export default function ProfileScreen() {
         )}
 
         <AppButton
+          title="Política de privacidade"
+          icon="shield-checkmark-outline"
+          variant="ghost"
+          onPress={() => router.push('/privacy')}
+        />
+
+        <AppButton
           title="Zerar progresso"
           icon="trash-outline"
           variant="dangerOutline"
