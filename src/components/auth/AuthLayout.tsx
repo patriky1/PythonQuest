@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/AppButton';
 import { BrandLogo } from '@/components/BrandLogo';
+import { Reveal } from '@/components/motion';
 import { colors, radius, shadow, spacing } from '@/theme/colors';
 
 type AuthLayoutProps = PropsWithChildren<{
@@ -44,15 +45,15 @@ export function AuthLayout({
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.topArea}>
+        <Reveal index={0} style={styles.topArea}>
           <BrandLogo size={72} />
           <Text style={styles.headline} accessibilityRole="header">
             {headline}
           </Text>
           <Text style={styles.description}>{description}</Text>
-        </View>
+        </Reveal>
 
-        <View style={styles.card}>
+        <Reveal index={2} style={styles.card}>
           <Text style={styles.cardTitle}>{title}</Text>
 
           {children}
@@ -62,7 +63,7 @@ export function AuthLayout({
               <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
           ) : null}
-        </View>
+        </Reveal>
 
         <AppButton
           title="Continuar sem conta"

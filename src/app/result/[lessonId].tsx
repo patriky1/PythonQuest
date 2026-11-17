@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppButton } from '@/components/AppButton';
 import { LevelProgress } from '@/components/LevelProgress';
 import { CelebrationMascot } from '@/components/mascot/CelebrationMascot';
+import { CountUp, Reveal } from '@/components/motion';
 import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
 import { useLearning } from '@/context/LearningContext';
@@ -71,7 +72,7 @@ export default function ResultScreen() {
 
   return (
     <Screen>
-      <View style={styles.card}>
+      <Reveal index={0} style={styles.card}>
         <CelebrationMascot celebrate={passed} />
 
         <Text style={styles.title} accessibilityRole="header">
@@ -82,7 +83,7 @@ export default function ResultScreen() {
         <View style={styles.statsRow}>
           <View style={[styles.statBox, styles.xpBox]}>
             <Ionicons name="flash" size={20} color={colors.warning} />
-            <Text style={styles.xpValue}>+{awardedXp}</Text>
+            <CountUp value={awardedXp} prefix="+" duration={900} style={styles.xpValue} />
             <Text style={styles.statLabel}>XP ganho</Text>
           </View>
 
@@ -92,9 +93,12 @@ export default function ResultScreen() {
               size={20}
               color={passed ? colors.primary : colors.danger}
             />
-            <Text style={[styles.accuracyValue, !passed && styles.accuracyValueLow]}>
-              {accuracy}%
-            </Text>
+            <CountUp
+              value={accuracy}
+              suffix="%"
+              duration={900}
+              style={[styles.accuracyValue, !passed && styles.accuracyValueLow]}
+            />
             <Text style={styles.statLabel}>
               {correct}/{total} acertos
             </Text>
@@ -106,15 +110,15 @@ export default function ResultScreen() {
           color={passed ? colors.primary : colors.danger}
           animated
         />
-      </View>
+      </Reveal>
 
       {passed ? (
-        <View style={styles.levelArea}>
+        <Reveal index={2} style={styles.levelArea}>
           <LevelProgress xp={progress.xp} />
-        </View>
+        </Reveal>
       ) : null}
 
-      <View style={styles.actions}>
+      <Reveal index={3} style={styles.actions}>
         {passed ? (
           <>
             <AppButton
@@ -132,7 +136,7 @@ export default function ResultScreen() {
             <AppButton title="Voltar para a trilha" variant="ghost" onPress={() => router.replace('/learn')} />
           </>
         )}
-      </View>
+      </Reveal>
     </Screen>
   );
 }

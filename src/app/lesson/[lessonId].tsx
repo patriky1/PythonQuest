@@ -8,9 +8,11 @@ import { AnswerOption } from '@/components/AnswerOption';
 import { AppButton } from '@/components/AppButton';
 import { CodeBlock } from '@/components/CodeBlock';
 import { LessonStepCard } from '@/components/LessonStepCard';
+import { Reveal, useReduceMotion } from '@/components/motion';
 import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
-import { LearningErrorView, LearningLoadingView, StateView } from '@/components/StateView';
+import { LoadingScreen } from '@/components/LoadingScreen';
+import { LearningErrorView, StateView } from '@/components/StateView';
 import { Tag } from '@/components/Tag';
 import { useLearning } from '@/context/LearningContext';
 import { useProgress } from '@/features/progress/ProgressContext';
@@ -53,7 +55,10 @@ export default function LessonScreen() {
   const [outOfHearts, setOutOfHearts] = useState(() => progress.hearts <= 0);
 
   const feedbackAnim = useRef(new Animated.Value(0)).current;
+  const heartFx = useRef(new Animated.Value(0)).current;
+  const previousHeartsRef = useRef(progress.hearts);
   const scrollRef = useRef<ScrollViewInstance>(null);
+  const reduceMotion = useReduceMotion();
 
   const step = lesson?.steps[stepIndex];
   const revealed = selectedChoiceId !== null;
@@ -81,12 +86,25 @@ export default function LessonScreen() {
     }
   }, [revealed, feedbackAnim]);
 
+  // Perdeu um coração: o contador pulsa e treme para o erro ficar visível.
+  useEffect(() => {
+    const lostHeart = progress.hearts < previousHeartsRef.current;
+    previousHeartsRef.current = progress.hearts;
+
+    if (!lostHeart || reduceMotion) {
+      return;
+    }
+
+    heartFx.setValue(0);
+    Animated.sequence(
+      [1, -1, 0.7, -0.5, 0.25, 0].map((toValue) =>
+        Animated.timing(heartFx, { toValue, duration: 60, useNativeDriver: true })
+      )
+    ).start();
+  }, [progress.hearts, heartFx, reduceMotion]);
+
   if (isLearningLoading && !lesson) {
-    return (
-      <Screen>
-        <LearningLoadingView />
-      </Screen>
-    );
+    return <LoadingScreen />;
   }
 
   if (learningError && !lesson) {
@@ -274,10 +292,27 @@ export default function LessonScreen() {
       <Stack.Screen options={{ title: currentLesson.title }} />
 
       <View style={styles.topBar}>
-        <View style={styles.hearts} accessible accessibilityLabel={`${progress.hearts} corações`}>
+        <Animated.View
+          style={[
+            styles.hearts,
+            {
+              transform: [
+                { translateX: heartFx.interpolate({ inputRange: [-1, 1], outputRange: [-5, 5] }) },
+                {
+                  scale: heartFx.interpolate({
+                    inputRange: [-1, 0, 1],
+                    outputRange: [1.25, 1, 1.25]
+                  })
+                }
+              ]
+            }
+          ]}
+          accessible
+          accessibilityLabel={`${progress.hearts} corações`}
+        >
           <Ionicons name="heart" size={20} color={colors.heart} />
           <Text style={styles.heartsText}>{progress.hearts}</Text>
-        </View>
+        </Animated.View>
 
         <View style={styles.progressWrap}>
           <ProgressBar value={progressValue} height={12} animated />
@@ -294,16 +329,19 @@ export default function LessonScreen() {
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
       >
-        {step.type === 'content' ? (
-          <LessonStepCard
-            title={step.title}
-            body={step.body}
-            analogy={step.analogy}
-            code={step.code}
-          />
-        ) : (
-          renderInteractiveStep(step)
-        )}
+        {/* A chave troca a cada etapa: o conteúdo novo entra subindo. */}
+        <Reveal key={stepIndex}>
+          {step.type === 'content' ? (
+            <LessonStepCard
+              title={step.title}
+              body={step.body}
+              analogy={step.analogy}
+              code={step.code}
+            />
+          ) : (
+            renderInteractiveStep(step)
+          )}
+        </Reveal>
       </ScrollView>
 
       <View
@@ -391,7 +429,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    minWidth: 48
+    minWidth: 54,
+    minHeight: 32,
+    paddingHorizontal: 8,
+    borderRadius: radius.pill,
+    backgroundColor: '#FFF1F2'
   },
   heartsText: {
     color: colors.heart,

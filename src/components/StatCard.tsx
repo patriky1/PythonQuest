@@ -2,6 +2,7 @@ import React, { ComponentProps } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+import { CountUp } from '@/components/motion';
 import { colors, radius, spacing } from '@/theme/colors';
 
 type StatCardProps = {
@@ -13,13 +14,15 @@ type StatCardProps = {
 
 export function StatCard({ label, value, icon, color }: StatCardProps) {
   return (
-    <View
-      style={styles.card}
-      accessible
-      accessibilityLabel={`${label}: ${value}`}
-    >
-      <Ionicons name={icon} size={22} color={color} />
-      <Text style={styles.value}>{value}</Text>
+    <View style={styles.card} accessible accessibilityLabel={`${label}: ${value}`}>
+      <View style={[styles.iconBox, { backgroundColor: `${color}1A` }]}>
+        <Ionicons name={icon} size={18} color={color} />
+      </View>
+      {typeof value === 'number' ? (
+        <CountUp value={value} style={styles.value} />
+      ) : (
+        <Text style={styles.value}>{value}</Text>
+      )}
       <Text style={styles.label} numberOfLines={1}>
         {label}
       </Text>
@@ -39,11 +42,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 2
   },
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   value: {
     fontSize: 22,
     color: colors.text,
     fontWeight: '800',
-    marginTop: 4
+    marginTop: 6
   },
   label: {
     color: colors.muted,

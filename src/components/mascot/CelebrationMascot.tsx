@@ -114,8 +114,11 @@ export function CelebrationMascot({ celebrate = true }: CelebrationMascotProps) 
       />
 
       <Animated.View style={{ transform: [{ scale: mascotScale }] }}>
+        {/* WebP animado gerado a partir do GIF original (scripts/loading-animations):
+            sem quadros repetidos, tempo uniforme, bordas suaves e confete que
+            some aos poucos no fim do loop. */}
         <Image
-          source={require('../../../assets/mascot/snake-celebrate.gif')}
+          source={require('../../../assets/mascot/snake-celebrate.webp')}
           style={styles.mascot}
           contentFit="contain"
           cachePolicy="memory-disk"

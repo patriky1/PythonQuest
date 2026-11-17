@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AppButton } from '@/components/AppButton';
 import { LevelProgress } from '@/components/LevelProgress';
+import { CountUp, Float, PressableScale, Reveal } from '@/components/motion';
 import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
 import { SectionHeader } from '@/components/SectionHeader';
@@ -74,14 +75,14 @@ export default function ProfileScreen() {
 
   return (
     <Screen>
-      <View style={styles.headerCard}>
-        <View style={styles.avatar}>
+      <Reveal index={0} style={styles.headerCard}>
+        <Float distance={4} style={styles.avatar}>
           {user?.name ? (
             <Text style={styles.avatarText}>{user.name.slice(0, 1).toUpperCase()}</Text>
           ) : (
             <Ionicons name="person" size={32} color={colors.ink} />
           )}
-        </View>
+        </Float>
 
         <View style={styles.headerTextArea}>
           <Text style={styles.profileName} numberOfLines={1}>
@@ -91,11 +92,13 @@ export default function ProfileScreen() {
             {user?.email || 'Progresso salvo só neste aparelho'}
           </Text>
         </View>
-      </View>
+      </Reveal>
 
-      <LevelProgress xp={progress.xp} />
+      <Reveal index={1}>
+        <LevelProgress xp={progress.xp} />
+      </Reveal>
 
-      <View style={styles.statsGrid}>
+      <Reveal index={2} style={styles.statsGrid}>
         <StatCard label="Sequência" value={activeStreak} icon="flame" color="#EA580C" />
         <StatCard label="Corações" value={progress.hearts} icon="heart" color={colors.heart} />
         <StatCard
@@ -104,18 +107,18 @@ export default function ProfileScreen() {
           icon="game-controller"
           color={colors.secondary}
         />
-      </View>
+      </Reveal>
 
-      <View style={styles.trackCard}>
+      <Reveal index={3} style={styles.trackCard}>
         <View style={styles.trackHeader}>
           <Text style={styles.trackTitle}>Trilha Python</Text>
-          <Text style={styles.trackPercent}>{trackPercent}%</Text>
+          <CountUp value={trackPercent} suffix="%" style={styles.trackPercent} />
         </View>
-        <ProgressBar value={trackPercent} />
+        <ProgressBar value={trackPercent} animated />
         <Text style={styles.trackHint}>
           {completedLessons} de {lessons.length} missões concluídas
         </Text>
-      </View>
+      </Reveal>
 
       <SectionHeader
         title="Conquistas"
@@ -124,8 +127,9 @@ export default function ProfileScreen() {
 
       <View style={styles.badgeGrid}>
         {achievements.map((badge) => (
-          <View
+          <PressableScale
             key={badge.id}
+            scaleTo={badge.unlocked ? 1.05 : 0.97}
             style={[styles.badgeCard, !badge.unlocked && styles.badgeCardLocked]}
             accessible
             accessibilityLabel={`${badge.id}. ${badge.unlocked ? 'Desbloqueada' : `Bloqueada, ${badge.value} de ${badge.target}`}. ${badge.description}`}
@@ -156,8 +160,13 @@ export default function ProfileScreen() {
                   {badge.value}/{badge.target}
                 </Text>
               </View>
-            ) : null}
-          </View>
+            ) : (
+              <View style={styles.badgeDone}>
+                <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
+                <Text style={styles.badgeDoneText}>Conquistada</Text>
+              </View>
+            )}
+          </PressableScale>
         ))}
       </View>
 
@@ -292,11 +301,14 @@ const styles = StyleSheet.create({
     borderColor: '#FDE68A',
     borderRadius: radius.lg,
     padding: spacing.md,
-    gap: 4
+    gap: 4,
+    ...shadow.card
   },
   badgeCardLocked: {
     borderColor: colors.border,
-    backgroundColor: colors.surfaceMuted
+    backgroundColor: colors.surfaceMuted,
+    shadowOpacity: 0,
+    elevation: 0
   },
   badgeIcon: {
     width: 42,
@@ -319,6 +331,17 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     lineHeight: 17
+  },
+  badgeDone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4
+  },
+  badgeDoneText: {
+    color: colors.primaryDark,
+    fontSize: 12,
+    fontWeight: '800'
   },
   badgeProgress: {
     flexDirection: 'row',

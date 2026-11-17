@@ -5,6 +5,11 @@ export const colors = {
   card: '#FFFFFF',
   surfaceMuted: '#F1F5F9',
 
+  // Azul e amarelo do logo do Python: cenário do topo da tela Início.
+  brand: '#2A5F8F',
+  brandDeep: '#1E4A72',
+  brandYellow: '#FFD43B',
+
   ink: '#0F172A',
   inkSoft: '#1E293B',
   inkText: '#CBD5E1',

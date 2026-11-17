@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -11,24 +11,37 @@ import { ProgressProvider } from '@/features/progress/ProgressContext';
 import { colors } from '@/theme/colors';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
+// A tela nativa de abertura some esmaecendo, em vez de cortar de uma vez.
+SplashScreen.setOptions({ fade: true, duration: 250 });
+
+/** Se a animação nunca avisar que apareceu, a abertura nativa some mesmo assim. */
+const NATIVE_SPLASH_FALLBACK_MS = 1500;
 
 export default function RootLayout() {
-  const [nativeSplashHidden, setNativeSplashHidden] = useState(false);
   const [showVideoSplash, setShowVideoSplash] = useState(true);
+  const nativeSplashHiddenRef = useRef(false);
+
+  // Só tira a abertura nativa quando a animação de carregamento já está
+  // desenhada; antes disso aparecia um instante de tela vazia (ou preta).
+  const hideNativeSplash = useCallback(() => {
+    if (nativeSplashHiddenRef.current) {
+      return;
+    }
+
+    nativeSplashHiddenRef.current = true;
+    SplashScreen.hideAsync().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
-    SplashScreen.hideAsync()
-      .catch(() => undefined)
-      .finally(() => setNativeSplashHidden(true));
-  }, []);
+    const timer = setTimeout(hideNativeSplash, NATIVE_SPLASH_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [hideNativeSplash]);
 
   const handleFinishVideoSplash = useCallback(() => {
+    // Garante que a abertura nativa saiu antes de mostrar o app.
+    hideNativeSplash();
     setShowVideoSplash(false);
-  }, []);
-
-  if (!nativeSplashHidden) {
-    return null;
-  }
+  }, [hideNativeSplash]);
 
   return (
     <AuthProvider>
@@ -69,7 +82,7 @@ export default function RootLayout() {
       </View>
 
       {showVideoSplash ? (
-        <AppVideoSplash onFinish={handleFinishVideoSplash} />
+        <AppVideoSplash onFinish={handleFinishVideoSplash} onReady={hideNativeSplash} />
       ) : null}
     </AuthProvider>
   );

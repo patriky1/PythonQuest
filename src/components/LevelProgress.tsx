@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { CountUp } from '@/components/motion';
 import { ProgressBar } from '@/components/ProgressBar';
 import { getLevelInfo } from '@/features/progress/progress.helpers';
 import { colors, radius, spacing } from '@/theme/colors';
@@ -23,14 +24,14 @@ export function LevelProgress({ xp, dark = false }: LevelProgressProps) {
 
         <View style={styles.textArea}>
           <Text style={[styles.levelLabel, dark && styles.textOnDark]}>
-            Nível {level.level} · {level.title}
+            Nível {level.level}: {level.title}
           </Text>
           <Text style={[styles.hint, dark && styles.hintOnDark]}>
             Faltam {remainingXp} XP para o nível {level.level + 1}
           </Text>
         </View>
 
-        <Text style={[styles.xpValue, dark && styles.xpValueOnDark]}>{xp} XP</Text>
+        <CountUp value={xp} suffix=" XP" style={[styles.xpValue, dark && styles.xpValueOnDark]} />
       </View>
 
       <ProgressBar

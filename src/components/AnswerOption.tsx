@@ -1,7 +1,8 @@
-import React, { memo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { memo, useEffect, useRef } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+import { useReduceMotion } from '@/components/motion';
 import { colors, monoFont, radius, spacing } from '@/theme/colors';
 
 type AnswerOptionProps = {
@@ -27,7 +28,41 @@ export const AnswerOption = memo(function AnswerOption({
   const showWrong = revealed && selected && !correct;
   const dimmed = revealed && !showCorrect && !showWrong;
 
+  const reduceMotion = useReduceMotion();
+  const shake = useRef(new Animated.Value(0)).current;
+  const pop = useRef(new Animated.Value(0)).current;
+
+  // Resposta revelada: a errada treme, a certa dá um "pop".
+  useEffect(() => {
+    if (reduceMotion) {
+      return;
+    }
+
+    if (showWrong) {
+      shake.setValue(0);
+      Animated.sequence(
+        [1, -1, 0.7, -0.5, 0.25, 0].map((toValue) =>
+          Animated.timing(shake, { toValue, duration: 55, useNativeDriver: true })
+        )
+      ).start();
+    } else if (showCorrect) {
+      pop.setValue(0);
+      Animated.sequence([
+        Animated.timing(pop, { toValue: 1, duration: 110, useNativeDriver: true }),
+        Animated.spring(pop, { toValue: 0, friction: 4, tension: 180, useNativeDriver: true })
+      ]).start();
+    }
+  }, [showWrong, showCorrect, reduceMotion, shake, pop]);
+
   return (
+    <Animated.View
+      style={{
+        transform: [
+          { translateX: shake.interpolate({ inputRange: [-1, 1], outputRange: [-9, 9] }) },
+          { scale: pop.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }) }
+        ]
+      }}
+    >
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Alternativa ${letter}: ${text}`}
@@ -74,6 +109,7 @@ export const AnswerOption = memo(function AnswerOption({
         {text}
       </Text>
     </Pressable>
+    </Animated.View>
   );
 });
 

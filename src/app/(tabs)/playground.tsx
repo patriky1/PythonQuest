@@ -13,7 +13,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppButton } from '@/components/AppButton';
-import { CodeBlock } from '@/components/CodeBlock';
 import { ProgressBar } from '@/components/ProgressBar';
 import {
   PythonRunnerHandle,
@@ -21,7 +20,6 @@ import {
   PythonRunResult
 } from '@/components/python/PythonRunnerWebView';
 import { Screen } from '@/components/Screen';
-import { SectionHeader } from '@/components/SectionHeader';
 import { Tag } from '@/components/Tag';
 import {
   EDITOR_SHORTCUTS,
@@ -54,6 +52,25 @@ type Selection = { start: number; end: number };
 const SLOW_RUN_MS = 8000;
 const HISTORY_PREVIEW_COUNT = 5;
 
+// Tons do console: tudo deriva do azul-marinho do tema para parecer uma peça só.
+const consoleTone = {
+  body: colors.codeBg,
+  bar: colors.inkSoft,
+  output: '#081022',
+  divider: 'rgba(148,163,184,0.16)',
+  key: '#273449',
+  keyPressed: colors.secondary,
+  ready: '#4ADE80',
+  errorText: '#FCA5A5',
+  python: '#FACC15'
+};
+
+const RUNNER_LABEL: Record<RunnerStatus, string> = {
+  ready: 'Python pronto',
+  loading: 'Carregando Python',
+  error: 'Python indisponível'
+};
+
 function formatDate(value: string) {
   return new Date(value).toLocaleString('pt-BR', {
     day: '2-digit',
@@ -61,6 +78,10 @@ function formatDate(value: string) {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+function countInputs(value: string) {
+  return value.split('\n').filter((line) => line.length > 0).length;
 }
 
 export default function PlaygroundScreen() {
@@ -235,6 +256,9 @@ export default function PlaygroundScreen() {
 
   const visibleHistory = showAllHistory ? history : history.slice(0, HISTORY_PREVIEW_COUNT);
   const isRunning = outputStatus === 'running';
+  const isReady = runnerStatus === 'ready';
+  const inputCount = countInputs(inputs);
+  const dailyLimitReached = todayXp >= PLAYGROUND_DAILY_XP_LIMIT;
 
   return (
     <Screen>
@@ -254,80 +278,81 @@ export default function PlaygroundScreen() {
         }}
       />
 
-      <View style={styles.statusCard}>
-        <View style={styles.statusRow}>
-          <View style={styles.statusPill}>
-            {runnerStatus === 'loading' ? (
-              <ActivityIndicator size="small" color={colors.accent} />
-            ) : (
-              <View
-                style={[
-                  styles.statusDot,
-                  { backgroundColor: runnerStatus === 'ready' ? '#22C55E' : colors.danger }
-                ]}
-              />
-            )}
-            <Text style={styles.statusText}>
-              {runnerStatus === 'ready'
-                ? 'Python pronto'
-                : runnerStatus === 'loading'
-                  ? 'Carregando Python...'
-                  : 'Python indisponível'}
-            </Text>
-          </View>
-
-          <Text style={styles.xpText}>
-            <Ionicons name="flash" size={13} color={colors.accent} /> {todayXp}/
-            {PLAYGROUND_DAILY_XP_LIMIT} XP hoje
+      {/* XP do dia: informação de apoio, fica discreta acima do console. */}
+      <View style={styles.xpStrip}>
+        <View style={styles.xpRow}>
+          <Ionicons name="flash" size={15} color={colors.warning} />
+          <Text style={styles.xpValue}>
+            {todayXp} de {PLAYGROUND_DAILY_XP_LIMIT} XP hoje
+          </Text>
+          <Text style={styles.xpHint} numberOfLines={1}>
+            {dailyLimitReached
+              ? 'Limite de hoje atingido'
+              : `+${PLAYGROUND_XP_PER_RUN} por programa novo sem erros`}
           </Text>
         </View>
-
         <ProgressBar
           value={toPercent(todayXp, PLAYGROUND_DAILY_XP_LIMIT)}
-          height={6}
+          height={4}
           color={colors.accent}
-          trackColor="rgba(255,255,255,0.14)"
+          trackColor={colors.border}
         />
-        <Text style={styles.statusHint}>
-          Ganhe {PLAYGROUND_XP_PER_RUN} XP a cada programa novo que roda sem erros.
-        </Text>
-
-        {runnerStatus === 'error' ? (
-          <AppButton title="Tentar carregar de novo" icon="refresh" compact onPress={handleReloadRunner} />
-        ) : null}
       </View>
 
-      <SectionHeader title="Exemplos" subtitle="Toque para carregar no editor" />
-
+      <Text style={styles.examplesLabel}>Comece por um exemplo</Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.examplesRow}
+        style={styles.examplesScroll}
       >
         {PLAYGROUND_EXAMPLES.map((example) => (
           <Pressable
             key={example.title}
             accessibilityRole="button"
             accessibilityLabel={`Carregar exemplo ${example.title}`}
-            style={({ pressed }) => [styles.exampleChip, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.exampleChip, pressed && styles.exampleChipPressed]}
             onPress={() => loadExample(example)}
           >
-            <Ionicons name="code-slash" size={14} color={colors.secondaryDark} />
             <Text style={styles.exampleText}>{example.title}</Text>
           </Pressable>
         ))}
       </ScrollView>
 
-      <View style={styles.editorCard}>
-        <View style={styles.editorHeader}>
-          <Text style={styles.editorFile}>main.py</Text>
+      {/* Console: editor, execução e saída numa peça só. */}
+      <View style={styles.console}>
+        <View style={styles.consoleBar}>
+          <View style={styles.fileTab}>
+            <Ionicons name="logo-python" size={15} color={consoleTone.python} />
+            <Text style={styles.fileName}>main.py</Text>
+          </View>
+
+          <View
+            style={styles.runtime}
+            accessibilityLiveRegion="polite"
+            accessibilityLabel={RUNNER_LABEL[runnerStatus]}
+          >
+            {runnerStatus === 'loading' ? (
+              <ActivityIndicator size="small" color={colors.inkText} />
+            ) : (
+              <View
+                style={[
+                  styles.runtimeDot,
+                  { backgroundColor: isReady ? consoleTone.ready : colors.danger }
+                ]}
+              />
+            )}
+            <Text style={styles.runtimeText}>{RUNNER_LABEL[runnerStatus]}</Text>
+          </View>
+
           <Pressable
             onPress={() => setCode('')}
             hitSlop={10}
             accessibilityRole="button"
             accessibilityLabel="Apagar todo o código"
+            style={({ pressed }) => [styles.barAction, pressed && styles.barActionPressed]}
           >
-            <Text style={styles.editorAction}>Limpar</Text>
+            <Text style={styles.barActionText}>Limpar</Text>
           </Pressable>
         </View>
 
@@ -343,7 +368,7 @@ export default function PlaygroundScreen() {
           textAlignVertical="top"
           style={styles.editor}
           placeholder="# Escreva seu código aqui"
-          placeholderTextColor="#64748B"
+          placeholderTextColor={colors.muted}
           accessibilityLabel="Editor de código Python"
         />
 
@@ -352,6 +377,7 @@ export default function PlaygroundScreen() {
           keyboardShouldPersistTaps="always"
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.shortcutsRow}
+          style={styles.shortcutsScroll}
         >
           {EDITOR_SHORTCUTS.map((symbol) => (
             <Pressable
@@ -364,78 +390,110 @@ export default function PlaygroundScreen() {
             </Pressable>
           ))}
         </ScrollView>
-      </View>
 
-      <Pressable
-        onPress={() => setShowInputs((current) => !current)}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: showInputs }}
-        style={styles.inputsToggle}
-      >
-        <Ionicons name="keypad-outline" size={18} color={colors.textSecondary} />
-        <Text style={styles.inputsToggleText}>
-          Entradas para input() {inputs ? `(${inputs.split('\n').length})` : ''}
-        </Text>
-        <Ionicons name={showInputs ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
-      </Pressable>
-
-      {showInputs ? (
-        <TextInput
-          value={inputs}
-          onChangeText={setInputs}
-          multiline
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder={'Uma resposta por linha.\nEx.: Ana\n16'}
-          placeholderTextColor={colors.muted}
-          style={styles.inputsField}
-          accessibilityLabel="Entradas para o input, uma por linha"
-        />
-      ) : null}
-
-      <View style={styles.actionsRow}>
-        <AppButton
-          title="Reiniciar sessão"
-          variant="ghost"
-          icon="refresh"
-          compact
-          disabled={runnerStatus !== 'ready' || isRunning}
-          onPress={() => runnerRef.current?.resetSession()}
-          style={styles.actionButton}
-        />
-        <AppButton
-          title={isRunning ? 'Executando' : 'Executar'}
-          icon="play"
-          loading={isRunning}
-          disabled={runnerStatus !== 'ready'}
-          onPress={handleRun}
-          style={styles.actionButton}
-        />
-      </View>
-
-      <View style={styles.outputCard}>
-        <View style={styles.outputHeader}>
-          <Text style={styles.outputTitle}>Saída</Text>
-          {outputStatus === 'success' ? <Tag label="Sucesso" tone="success" icon="checkmark" /> : null}
-          {outputStatus === 'error' ? <Tag label="Erro" tone="danger" icon="alert" /> : null}
-          {lastXpAwarded > 0 ? <Tag label={`+${lastXpAwarded} XP`} tone="warning" icon="flash" /> : null}
-        </View>
-
-        <Text
-          style={[styles.outputText, outputStatus === 'error' && styles.outputTextError]}
-          selectable
-        >
-          {output}
-        </Text>
-
-        {isSlowRun ? (
-          <View style={styles.slowBox}>
-            <Text style={styles.slowText}>
-              Está demorando muito. Pode ser um loop infinito (um while que nunca termina).
-            </Text>
-            <AppButton title="Parar e reiniciar Python" variant="danger" compact onPress={handleReloadRunner} />
+        {showInputs ? (
+          <View style={styles.inputsPanel}>
+            <Text style={styles.inputsLabel}>Respostas para input(), uma por linha</Text>
+            <TextInput
+              value={inputs}
+              onChangeText={setInputs}
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder={'Ana\n16'}
+              placeholderTextColor={colors.muted}
+              style={styles.inputsField}
+              accessibilityLabel="Respostas para input(), uma por linha"
+            />
           </View>
         ) : null}
+
+        <View style={styles.runBar}>
+          <Pressable
+            onPress={() => setShowInputs((current) => !current)}
+            accessibilityRole="button"
+            accessibilityLabel={`Entradas para input()${inputCount ? `, ${inputCount} preenchidas` : ''}`}
+            accessibilityState={{ expanded: showInputs }}
+            style={({ pressed }) => [
+              styles.barButton,
+              showInputs && styles.barButtonActive,
+              pressed && styles.barActionPressed
+            ]}
+          >
+            <Ionicons name="keypad-outline" size={17} color={colors.codeText} />
+            <Text style={styles.barButtonText}>Entradas</Text>
+            {inputCount > 0 ? (
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeText}>{inputCount}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+
+          <Pressable
+            onPress={() => runnerRef.current?.resetSession()}
+            disabled={!isReady || isRunning}
+            accessibilityRole="button"
+            accessibilityLabel="Reiniciar sessão do Python"
+            accessibilityState={{ disabled: !isReady || isRunning }}
+            style={({ pressed }) => [
+              styles.barButton,
+              styles.iconButton,
+              (!isReady || isRunning) && styles.barButtonDisabled,
+              pressed && styles.barActionPressed
+            ]}
+          >
+            <Ionicons name="refresh" size={18} color={colors.codeText} />
+          </Pressable>
+
+          <AppButton
+            title={isRunning ? 'Executando' : 'Executar'}
+            icon="play"
+            compact
+            loading={isRunning}
+            disabled={!isReady}
+            onPress={handleRun}
+            style={styles.runButton}
+          />
+        </View>
+
+        <View style={styles.output} accessibilityLiveRegion="polite">
+          <View style={styles.outputHeader}>
+            <Text style={styles.outputTitle}>Saída</Text>
+            {outputStatus === 'success' ? <Tag label="Sucesso" tone="success" icon="checkmark" /> : null}
+            {outputStatus === 'error' ? <Tag label="Erro" tone="danger" icon="alert" /> : null}
+            {lastXpAwarded > 0 ? <Tag label={`+${lastXpAwarded} XP`} tone="warning" icon="flash" /> : null}
+          </View>
+
+          <Text
+            style={[
+              styles.outputText,
+              outputStatus === 'idle' && styles.outputTextIdle,
+              outputStatus === 'error' && styles.outputTextError
+            ]}
+            selectable
+          >
+            {output}
+          </Text>
+
+          {runnerStatus === 'error' ? (
+            <AppButton
+              title="Carregar o Python de novo"
+              icon="refresh"
+              variant="secondary"
+              compact
+              onPress={handleReloadRunner}
+            />
+          ) : null}
+
+          {isSlowRun ? (
+            <View style={styles.slowBox}>
+              <Text style={styles.slowText}>
+                Está demorando muito. Pode ser um loop infinito (um while que nunca termina).
+              </Text>
+              <AppButton title="Parar e reiniciar Python" variant="danger" compact onPress={handleReloadRunner} />
+            </View>
+          ) : null}
+        </View>
       </View>
 
       {reviewTips.length > 0 ? (
@@ -443,7 +501,7 @@ export default function PlaygroundScreen() {
           <View style={styles.tipsHeader}>
             <Ionicons
               name={outputStatus === 'error' ? 'bug' : 'bulb'}
-              size={20}
+              size={18}
               color={outputStatus === 'error' ? colors.dangerText : colors.secondaryDark}
             />
             <Text style={[styles.tipsTitle, outputStatus === 'error' && styles.tipsTitleError]}>
@@ -459,9 +517,16 @@ export default function PlaygroundScreen() {
       ) : null}
 
       <View style={styles.historyHeader}>
-        <SectionHeader title="Histórico" subtitle={`${history.length} execuções salvas`} />
+        <Text style={styles.historyTitle} accessibilityRole="header">
+          Histórico
+        </Text>
         {history.length > 0 ? (
-          <Pressable onPress={confirmClearHistory} hitSlop={10} accessibilityRole="button">
+          <Pressable
+            onPress={confirmClearHistory}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Limpar histórico"
+          >
             <Text style={styles.clearHistory}>Limpar</Text>
           </Pressable>
         ) : null}
@@ -469,27 +534,46 @@ export default function PlaygroundScreen() {
 
       {history.length === 0 ? (
         <Text style={styles.emptyHistory}>
-          Seus códigos executados aparecem aqui para você reutilizar depois.
+          Cada programa que você executar fica salvo aqui. Toque nele depois para abrir no editor.
         </Text>
       ) : (
-        visibleHistory.map((item) => (
-          <Pressable
-            key={item.id}
-            accessibilityRole="button"
-            accessibilityHint="Carrega este código no editor"
-            onPress={() => loadHistoryItem(item)}
-            style={({ pressed }) => [styles.historyItem, pressed && styles.pressed]}
-          >
-            <View style={styles.historyTop}>
-              <Tag
-                label={item.status === 'success' ? 'Sucesso' : 'Erro'}
-                tone={item.status === 'success' ? 'success' : 'danger'}
-              />
-              <Text style={styles.historyDate}>{formatDate(item.createdAt)}</Text>
-            </View>
-            <CodeBlock code={item.code} numberOfLines={3} />
-          </Pressable>
-        ))
+        <View style={styles.historyList}>
+          {visibleHistory.map((item, index) => {
+            const isSuccess = item.status === 'success';
+
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${isSuccess ? 'Sucesso' : 'Erro'}, ${formatDate(item.createdAt)}`}
+                accessibilityHint="Abre este código no editor"
+                onPress={() => loadHistoryItem(item)}
+                style={({ pressed }) => [
+                  styles.historyItem,
+                  index > 0 && styles.historyItemDivider,
+                  pressed && styles.historyItemPressed
+                ]}
+              >
+                <View
+                  style={[
+                    styles.historyStatus,
+                    { backgroundColor: isSuccess ? colors.primary : colors.danger }
+                  ]}
+                />
+                <View style={styles.historyBody}>
+                  <Text style={styles.historyCode} numberOfLines={2}>
+                    {item.code.trim()}
+                  </Text>
+                  <Text style={styles.historyMeta}>
+                    {isSuccess ? 'Sucesso' : 'Erro'}, {formatDate(item.createdAt)}
+                    {item.xpAwarded > 0 ? `, +${item.xpAwarded} XP` : ''}
+                  </Text>
+                </View>
+                <Ionicons name="open-outline" size={16} color={colors.muted} />
+              </Pressable>
+            );
+          })}
+        </View>
       )}
 
       {history.length > HISTORY_PREVIEW_COUNT ? (
@@ -498,6 +582,7 @@ export default function PlaygroundScreen() {
           variant="ghost"
           compact
           onPress={() => setShowAllHistory((current) => !current)}
+          style={styles.moreHistory}
         />
       ) : null}
     </Screen>
@@ -505,110 +590,153 @@ export default function PlaygroundScreen() {
 }
 
 const styles = StyleSheet.create({
-  statusCard: {
-    backgroundColor: colors.ink,
-    borderRadius: radius.xl,
-    padding: spacing.md,
-    gap: spacing.sm,
-    ...shadow.raised
+  xpStrip: {
+    gap: 8,
+    marginBottom: spacing.md
   },
-  statusRow: {
+  xpRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm
+    gap: 6
   },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8
-  },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5
-  },
-  statusText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '800'
-  },
-  xpText: {
-    color: colors.accent,
-    fontSize: 13,
-    fontWeight: '800'
-  },
-  statusHint: {
-    color: colors.inkText,
-    fontSize: 12,
-    lineHeight: 17
-  },
-  examplesRow: {
-    gap: spacing.xs,
-    paddingBottom: spacing.md
-  },
-  exampleChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.secondarySoft,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    minHeight: 40
-  },
-  exampleText: {
-    color: colors.secondaryDark,
+  xpValue: {
+    color: colors.text,
     fontSize: 14,
     fontWeight: '800'
   },
-  editorCard: {
-    backgroundColor: colors.codeBg,
-    borderRadius: radius.lg,
-    overflow: 'hidden'
+  xpHint: {
+    flex: 1,
+    textAlign: 'right',
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600'
   },
-  editorHeader: {
+
+  examplesLabel: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: spacing.xs
+  },
+  examplesScroll: {
+    marginHorizontal: -spacing.md,
+    marginBottom: spacing.md
+  },
+  examplesRow: {
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md
+  },
+  exampleChip: {
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: 16,
+    minHeight: 40
+  },
+  exampleChipPressed: {
+    backgroundColor: colors.secondarySoft,
+    borderColor: colors.secondaryBorder
+  },
+  exampleText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700'
+  },
+
+  console: {
+    backgroundColor: consoleTone.body,
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+    ...shadow.raised
+  },
+  consoleBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.inkSoft
+    gap: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.xs,
+    minHeight: 48,
+    backgroundColor: consoleTone.bar
   },
-  editorFile: {
-    color: colors.inkText,
+  fileTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  fileName: {
+    color: colors.codeText,
     fontFamily: monoFont,
     fontSize: 13,
     fontWeight: '700'
   },
-  editorAction: {
-    color: '#FCA5A5',
+  runtime: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6
+  },
+  runtimeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4
+  },
+  runtimeText: {
+    color: colors.inkText,
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  barAction: {
+    paddingHorizontal: spacing.sm,
+    minHeight: 36,
+    justifyContent: 'center',
+    borderRadius: radius.sm
+  },
+  barActionPressed: {
+    backgroundColor: 'rgba(255,255,255,0.08)'
+  },
+  barActionText: {
+    color: consoleTone.errorText,
     fontSize: 13,
     fontWeight: '800'
   },
+
   editor: {
-    minHeight: 220,
+    minHeight: 240,
     color: colors.codeText,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 23,
     fontFamily: monoFont
+  },
+
+  shortcutsScroll: {
+    borderTopWidth: 1,
+    borderTopColor: consoleTone.divider
   },
   shortcutsRow: {
     gap: 6,
-    padding: spacing.xs,
-    backgroundColor: colors.inkSoft
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs
   },
   shortcutKey: {
-    minWidth: 40,
+    minWidth: 42,
     height: 40,
     borderRadius: 10,
-    backgroundColor: '#334155',
+    backgroundColor: consoleTone.key,
+    borderBottomWidth: 2,
+    borderBottomColor: '#111A2B',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8
   },
   shortcutKeyPressed: {
-    backgroundColor: colors.secondary
+    backgroundColor: consoleTone.keyPressed,
+    borderBottomColor: colors.secondaryDark
   },
   shortcutText: {
     color: '#FFFFFF',
@@ -616,47 +744,91 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700'
   },
-  inputsToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 48,
-    marginTop: spacing.sm
+
+  inputsPanel: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    gap: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: consoleTone.divider
   },
-  inputsToggleText: {
-    flex: 1,
-    color: colors.textSecondary,
-    fontSize: 14,
+  inputsLabel: {
+    color: colors.inkText,
+    fontSize: 13,
     fontWeight: '700'
   },
   inputsField: {
-    minHeight: 80,
-    backgroundColor: colors.card,
+    minHeight: 72,
+    backgroundColor: consoleTone.output,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    color: colors.text,
+    borderColor: consoleTone.divider,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    color: colors.codeText,
     fontFamily: monoFont,
     fontSize: 14,
-    textAlignVertical: 'top',
-    marginBottom: spacing.sm
+    lineHeight: 21,
+    textAlignVertical: 'top'
   },
-  actionsRow: {
+
+  runBar: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.xs
+    alignItems: 'center',
+    gap: spacing.xs,
+    padding: spacing.sm
   },
-  actionButton: {
+  barButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.28)'
+  },
+  barButtonActive: {
+    backgroundColor: 'rgba(37,99,235,0.22)',
+    borderColor: colors.secondary
+  },
+  barButtonDisabled: {
+    opacity: 0.4
+  },
+  barButtonText: {
+    color: colors.codeText,
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  iconButton: {
+    width: 44,
+    paddingHorizontal: 0,
+    justifyContent: 'center'
+  },
+  countBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    backgroundColor: colors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  countBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  runButton: {
     flex: 1,
-    minHeight: 52
+    minHeight: 44
   },
-  outputCard: {
-    backgroundColor: '#020617',
-    borderRadius: radius.lg,
+
+  output: {
+    backgroundColor: consoleTone.output,
+    borderTopWidth: 1,
+    borderTopColor: consoleTone.divider,
     padding: spacing.md,
-    marginTop: spacing.md,
-    minHeight: 130,
+    minHeight: 140,
     gap: spacing.sm
   },
   outputHeader: {
@@ -667,9 +839,8 @@ const styles = StyleSheet.create({
   outputTitle: {
     flex: 1,
     color: colors.inkText,
-    fontSize: 14,
-    fontWeight: '800',
-    fontFamily: monoFont
+    fontSize: 13,
+    fontWeight: '800'
   },
   outputText: {
     color: colors.codeOutput,
@@ -677,11 +848,14 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     fontFamily: monoFont
   },
+  outputTextIdle: {
+    color: '#94A3B8'
+  },
   outputTextError: {
-    color: '#FCA5A5'
+    color: consoleTone.errorText
   },
   slowBox: {
-    backgroundColor: 'rgba(220,38,38,0.12)',
+    backgroundColor: 'rgba(220,38,38,0.14)',
     borderRadius: radius.sm,
     padding: spacing.sm,
     gap: spacing.sm
@@ -691,18 +865,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19
   },
+
   tipsCard: {
-    backgroundColor: colors.secondarySoft,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: colors.secondaryBorder,
-    borderRadius: radius.lg,
+    borderColor: colors.border,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.secondary,
+    borderRadius: radius.md,
     padding: spacing.md,
     marginTop: spacing.md,
     gap: 6
   },
   tipsCardError: {
-    backgroundColor: '#FEF2F2',
-    borderColor: colors.dangerBorder
+    borderLeftColor: colors.danger
   },
   tipsHeader: {
     flexDirection: 'row',
@@ -711,7 +887,7 @@ const styles = StyleSheet.create({
   },
   tipsTitle: {
     color: colors.secondaryDark,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800'
   },
   tipsTitleError: {
@@ -722,11 +898,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21
   },
+
   historyHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.md
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm
+  },
+  historyTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.2
   },
   clearHistory: {
     color: colors.danger,
@@ -736,28 +920,52 @@ const styles = StyleSheet.create({
   emptyHistory: {
     color: colors.muted,
     fontSize: 14,
-    lineHeight: 20
+    lineHeight: 21
   },
-  historyItem: {
+  historyList: {
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: spacing.sm,
-    gap: spacing.sm,
-    marginBottom: spacing.sm
+    borderRadius: radius.md,
+    overflow: 'hidden'
   },
-  historyTop: {
+  historyItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingRight: spacing.md,
+    minHeight: 64
   },
-  historyDate: {
+  historyItemDivider: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border
+  },
+  historyItemPressed: {
+    backgroundColor: colors.surfaceMuted
+  },
+  historyStatus: {
+    width: 4,
+    alignSelf: 'stretch',
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2
+  },
+  historyBody: {
+    flex: 1,
+    gap: 4
+  },
+  historyCode: {
+    color: colors.text,
+    fontFamily: monoFont,
+    fontSize: 13,
+    lineHeight: 19
+  },
+  historyMeta: {
     color: colors.muted,
     fontSize: 12,
-    fontWeight: '700'
+    fontWeight: '600'
   },
-  pressed: {
-    opacity: 0.85
+  moreHistory: {
+    marginTop: spacing.sm
   }
 });

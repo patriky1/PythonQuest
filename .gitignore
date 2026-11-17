@@ -50,3 +50,8 @@ coverage/
 # Local IDE
 .history/
 node_modules
+
+# Chave da conta de serviço do Google Play (eas submit) — nunca versionar
+google-service-account.json
+*.aab
+*.apk

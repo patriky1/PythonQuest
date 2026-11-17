@@ -1,12 +1,14 @@
 import React, { ComponentProps } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppButton } from '@/components/AppButton';
+import { Float } from '@/components/motion';
 import { colors, radius, spacing } from '@/theme/colors';
 
 type StateViewProps = {
-  variant: 'loading' | 'error' | 'empty';
+  // Carregamento usa o LoadingScreen (animação padrão do app), não este componente.
+  variant: 'error' | 'empty';
   title: string;
   message?: string;
   icon?: ComponentProps<typeof Ionicons>['name'];
@@ -26,17 +28,13 @@ export function StateView({
 
   return (
     <View style={styles.container} accessibilityLiveRegion="polite">
-      <View style={[styles.iconBox, isError && styles.iconBoxError]}>
-        {variant === 'loading' ? (
-          <ActivityIndicator size="large" color={colors.primary} />
-        ) : (
-          <Ionicons
-            name={icon ?? (isError ? 'cloud-offline-outline' : 'sparkles-outline')}
-            size={34}
-            color={isError ? colors.danger : colors.primary}
-          />
-        )}
-      </View>
+      <Float distance={5} style={[styles.iconBox, isError && styles.iconBoxError]}>
+        <Ionicons
+          name={icon ?? (isError ? 'cloud-offline-outline' : 'sparkles-outline')}
+          size={34}
+          color={isError ? colors.danger : colors.primary}
+        />
+      </Float>
 
       <Text style={styles.title}>{title}</Text>
       {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -50,16 +48,6 @@ export function StateView({
         />
       ) : null}
     </View>
-  );
-}
-
-export function LearningLoadingView() {
-  return (
-    <StateView
-      variant="loading"
-      title="Carregando missões..."
-      message="Na primeira abertura do dia o servidor pode levar alguns segundos para acordar."
-    />
   );
 }
 

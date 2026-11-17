@@ -1,13 +1,15 @@
-import React, { memo, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { CodeBlock } from '@/components/CodeBlock';
+import { PressableScale, Reveal, useReduceMotion } from '@/components/motion';
 import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
 import { SectionHeader } from '@/components/SectionHeader';
-import { LearningErrorView, LearningLoadingView } from '@/components/StateView';
+import { LoadingScreen } from '@/components/LoadingScreen';
+import { LearningErrorView } from '@/components/StateView';
 import { GLOSSARY, GlossaryTerm } from '@/constants/glossary';
 import { useLearning } from '@/context/LearningContext';
 import { useTopicProgress } from '@/features/progress/useTopicProgress';
@@ -22,26 +24,59 @@ function normalize(text: string) {
 
 const GlossaryCard = memo(function GlossaryCard({ item }: { item: GlossaryTerm }) {
   const [expanded, setExpanded] = useState(false);
+  const reduceMotion = useReduceMotion();
+  // 0 = fechado, 1 = aberto: gira a seta e faz o exemplo aparecer.
+  const open = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (reduceMotion) {
+      open.setValue(expanded ? 1 : 0);
+      return;
+    }
+
+    Animated.spring(open, {
+      toValue: expanded ? 1 : 0,
+      friction: 8,
+      tension: 120,
+      useNativeDriver: true
+    }).start();
+  }, [expanded, open, reduceMotion]);
 
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityState={{ expanded }}
       accessibilityHint="Mostra um exemplo de código"
       onPress={() => setExpanded((current) => !current)}
-      style={styles.glossaryCard}
+      scaleTo={0.98}
+      style={[styles.glossaryCard, expanded && styles.glossaryCardOpen]}
     >
       <View style={styles.glossaryHeader}>
         <Text style={styles.term}>{item.term}</Text>
-        <Ionicons
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={18}
-          color={colors.muted}
-        />
+        <Animated.View
+          style={{
+            transform: [
+              { rotate: open.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) }
+            ]
+          }}
+        >
+          <Ionicons name="chevron-down" size={18} color={expanded ? colors.primaryDark : colors.muted} />
+        </Animated.View>
       </View>
       <Text style={styles.description}>{item.description}</Text>
-      {expanded ? <CodeBlock code={item.example} style={styles.example} /> : null}
-    </Pressable>
+      {expanded ? (
+        <Animated.View
+          style={{
+            opacity: open.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+            transform: [
+              { translateY: open.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }
+            ]
+          }}
+        >
+          <CodeBlock code={item.example} style={styles.example} />
+        </Animated.View>
+      ) : null}
+    </PressableScale>
   );
 });
 
@@ -49,6 +84,7 @@ export default function LibraryScreen() {
   const { isLearningLoading, learningError, reloadLearning } = useLearning();
   const topics = useTopicProgress();
   const [search, setSearch] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const filteredGlossary = useMemo(() => {
     const query = normalize(search.trim());
@@ -66,8 +102,8 @@ export default function LibraryScreen() {
     <Screen>
       <SectionHeader title="Glossário Python" subtitle="Toque em um termo para ver o exemplo" />
 
-      <View style={styles.searchBox}>
-        <Ionicons name="search" size={18} color={colors.muted} />
+      <View style={[styles.searchBox, searchFocused && styles.searchBoxFocused]}>
+        <Ionicons name="search" size={18} color={searchFocused ? colors.secondary : colors.muted} />
         <TextInput
           value={search}
           onChangeText={setSearch}
@@ -78,6 +114,8 @@ export default function LibraryScreen() {
           autoCapitalize="none"
           returnKeyType="search"
           accessibilityLabel="Buscar no glossário"
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
         />
         {search ? (
           <Pressable onPress={() => setSearch('')} hitSlop={12} accessibilityLabel="Limpar busca">
@@ -91,22 +129,29 @@ export default function LibraryScreen() {
           Nenhum termo encontrado. Tente outra palavra, como variável, for ou função.
         </Text>
       ) : (
-        filteredGlossary.map((item) => <GlossaryCard key={item.term} item={item} />)
+        <>
+          <Text style={styles.resultCount}>
+            {filteredGlossary.length} {filteredGlossary.length === 1 ? 'termo' : 'termos'}
+          </Text>
+          {filteredGlossary.map((item) => (
+            <GlossaryCard key={item.term} item={item} />
+          ))}
+        </>
       )}
 
       <SectionHeader title="Módulos do curso" subtitle="Resumo do que você vai aprender" />
 
-      {isLearningLoading && topics.length === 0 ? <LearningLoadingView /> : null}
+      {isLearningLoading && topics.length === 0 ? <LoadingScreen inline /> : null}
       {learningError && topics.length === 0 ? (
         <LearningErrorView message={learningError} onRetry={reloadLearning} />
       ) : null}
 
       {topics.map((topic) => (
-        <Pressable
+        <PressableScale
           key={topic.id}
           accessibilityRole="button"
           onPress={() => router.push('/learn')}
-          style={({ pressed }) => [styles.topicCard, pressed && styles.pressed]}
+          style={styles.topicCard}
         >
           <View style={[styles.topicIcon, { backgroundColor: `${topic.color}22` }]}>
             <Text style={styles.topicEmoji}>{topic.emoji}</Text>
@@ -119,7 +164,8 @@ export default function LibraryScreen() {
               <ProgressBar value={topic.percent} height={6} color={topic.color} />
             </View>
           </View>
-        </Pressable>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </PressableScale>
       ))}
     </Screen>
   );
@@ -131,12 +177,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     backgroundColor: colors.card,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     minHeight: 50,
     marginBottom: spacing.md
+  },
+  searchBoxFocused: {
+    borderColor: colors.secondary
+  },
+  resultCount: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: spacing.xs
   },
   searchInput: {
     flex: 1,
@@ -158,6 +213,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.sm
+  },
+  glossaryCardOpen: {
+    borderColor: colors.primaryBorder
   },
   glossaryHeader: {
     flexDirection: 'row',
@@ -215,8 +273,5 @@ const styles = StyleSheet.create({
   },
   topicProgress: {
     marginTop: spacing.sm
-  },
-  pressed: {
-    opacity: 0.9
   }
 });

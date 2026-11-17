@@ -5,6 +5,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppButton } from '@/components/AppButton';
+import { LoadingScreen } from '@/components/LoadingScreen';
+import { Float, Reveal } from '@/components/motion';
 import { Screen } from '@/components/Screen';
 import { useAuth } from '@/context/AuthContext';
 import { colors, radius, shadow, spacing } from '@/theme/colors';
@@ -48,7 +50,7 @@ export default function OnboardingScreen() {
   }, []);
 
   if (isLoading || onboardingDone === null) {
-    return null;
+    return <LoadingScreen />;
   }
 
   if (isAuthenticated || onboardingDone) {
@@ -62,15 +64,15 @@ export default function OnboardingScreen() {
 
   return (
     <Screen safeTop>
-      <View style={styles.hero}>
-        <View style={styles.logoBox}>
+      <Reveal index={0} style={styles.hero}>
+        <Float style={styles.logoBox}>
           <Image
             source={require('../../assets/images/logo.png')}
             style={styles.logo}
             resizeMode="contain"
             accessibilityIgnoresInvertColors
           />
-        </View>
+        </Float>
 
         <Text style={styles.title} accessibilityRole="header">
           PythonQuest
@@ -78,11 +80,11 @@ export default function OnboardingScreen() {
         <Text style={styles.subtitle}>
           Aprenda Python como quem joga: missões curtas, desafios e recompensas.
         </Text>
-      </View>
+      </Reveal>
 
       <View style={styles.features}>
-        {FEATURES.map((feature) => (
-          <View key={feature.title} style={styles.featureRow}>
+        {FEATURES.map((feature, index) => (
+          <Reveal key={feature.title} index={index + 2} style={styles.featureRow}>
             <View style={[styles.featureIcon, { backgroundColor: `${feature.color}1A` }]}>
               <Ionicons name={feature.icon} size={22} color={feature.color} />
             </View>
@@ -90,11 +92,11 @@ export default function OnboardingScreen() {
               <Text style={styles.featureTitle}>{feature.title}</Text>
               <Text style={styles.featureDescription}>{feature.text}</Text>
             </View>
-          </View>
+          </Reveal>
         ))}
       </View>
 
-      <View style={styles.actions}>
+      <Reveal index={5} style={styles.actions}>
         <AppButton
           title="Começar jornada"
           icon="rocket"
@@ -105,7 +107,7 @@ export default function OnboardingScreen() {
           variant="ghost"
           onPress={() => finishOnboarding('/auth/login')}
         />
-      </View>
+      </Reveal>
     </Screen>
   );
 }

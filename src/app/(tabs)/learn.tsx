@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react';
-import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
+import { CountUp, PressableScale, PulseRing, Reveal } from '@/components/motion';
 import { ProgressBar } from '@/components/ProgressBar';
 import { Screen } from '@/components/Screen';
 import { SectionHeader } from '@/components/SectionHeader';
-import { LearningErrorView, LearningLoadingView } from '@/components/StateView';
+import { LoadingScreen } from '@/components/LoadingScreen';
+import { LearningErrorView } from '@/components/StateView';
 import { Tag } from '@/components/Tag';
 import { useLearning } from '@/context/LearningContext';
 import { useProgress } from '@/features/progress/ProgressContext';
@@ -46,11 +48,7 @@ export default function LearnScreen() {
   }
 
   if (isLearningLoading && totalLessons === 0) {
-    return (
-      <Screen>
-        <LearningLoadingView />
-      </Screen>
-    );
+    return <LoadingScreen />;
   }
 
   if (learningError && totalLessons === 0) {
@@ -71,7 +69,7 @@ export default function LearnScreen() {
         />
       }
     >
-      <View style={styles.heroCard}>
+      <Reveal index={0} style={styles.heroCard}>
         <View style={styles.heroTopRow}>
           <View style={styles.heroTextArea}>
             <Text style={styles.heroLabel}>Trilha guiada</Text>
@@ -82,7 +80,7 @@ export default function LearnScreen() {
           </View>
 
           <View style={styles.heroBadge}>
-            <Text style={styles.heroBadgeText}>{overallPercent}%</Text>
+            <CountUp value={overallPercent} suffix="%" style={styles.heroBadgeText} />
           </View>
         </View>
 
@@ -95,10 +93,10 @@ export default function LearnScreen() {
         <Text style={styles.heroProgressText}>
           {completedLessons} de {totalLessons} missões concluídas
         </Text>
-      </View>
+      </Reveal>
 
       {topics.map((topic) => (
-        <View key={topic.id} style={styles.topicBlock}>
+        <Reveal key={topic.id} index={topic.index + 1} style={styles.topicBlock}>
           <View style={styles.topicHeader}>
             <View style={[styles.topicIconBox, { backgroundColor: `${topic.color}22` }]}>
               <Text style={styles.topicEmoji}>{topic.emoji}</Text>
@@ -145,6 +143,8 @@ export default function LearnScreen() {
                     />
                   ) : null}
 
+                  <View style={styles.pathNodeSlot}>
+                    {state === 'current' ? <PulseRing size={42} color={colors.secondary} /> : null}
                   <View style={[styles.pathNode, styles[`node_${state}`]]}>
                     {state === 'completed' ? (
                       <Ionicons name="checkmark" size={20} color="#FFFFFF" />
@@ -154,18 +154,18 @@ export default function LearnScreen() {
                       <Text style={styles.pathNodeText}>{index + 1}</Text>
                     )}
                   </View>
+                  </View>
 
-                  <Pressable
+                  <PressableScale
                     disabled={locked}
                     accessibilityRole="button"
                     accessibilityLabel={`${lesson.title}. ${STATE_LABEL[state]}`}
                     accessibilityState={{ disabled: locked }}
                     onPress={() => router.push(`/lesson/${lessonId}`)}
-                    style={({ pressed }) => [
+                    style={[
                       styles.lessonCard,
                       state === 'current' && styles.lessonCardCurrent,
-                      locked && styles.lessonCardLocked,
-                      pressed && styles.pressed
+                      locked && styles.lessonCardLocked
                     ]}
                   >
                     <View style={styles.lessonCardTop}>
@@ -192,12 +192,12 @@ export default function LearnScreen() {
                         icon={state === 'completed' ? 'checkmark' : 'flash'}
                       />
                     </View>
-                  </Pressable>
+                  </PressableScale>
                 </View>
               );
             })}
           </View>
-        </View>
+        </Reveal>
       ))}
 
       {topics.length === 0 ? (
@@ -230,9 +230,8 @@ const styles = StyleSheet.create({
   },
   heroLabel: {
     color: colors.accent,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
-    textTransform: 'uppercase',
     marginBottom: 4
   },
   heroTitle: {
@@ -294,9 +293,8 @@ const styles = StyleSheet.create({
   },
   topicModule: {
     color: colors.muted,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase'
+    fontSize: 13,
+    fontWeight: '800'
   },
   topicTitle: {
     color: colors.text,
@@ -340,13 +338,19 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: colors.border
   },
+  pathNodeSlot: {
+    width: 42,
+    height: 42,
+    marginTop: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   pathNode: {
     width: 42,
     height: 42,
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: spacing.sm,
     borderWidth: 3,
     borderColor: colors.background
   },
@@ -379,7 +383,8 @@ const styles = StyleSheet.create({
   lessonCardCurrent: {
     borderColor: colors.secondary,
     borderWidth: 2,
-    backgroundColor: '#F8FAFF'
+    backgroundColor: '#F8FAFF',
+    ...shadow.card
   },
   lessonCardLocked: {
     backgroundColor: colors.surfaceMuted,
@@ -411,9 +416,5 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
     marginTop: 4
-  },
-  pressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.99 }]
   }
 });

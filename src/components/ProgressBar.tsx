@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
 
+import { useReduceMotion } from '@/components/motion';
 import { colors } from '@/theme/colors';
 
 type ProgressBarProps = {
@@ -8,6 +9,7 @@ type ProgressBarProps = {
   height?: number;
   color?: string;
   trackColor?: string;
+  /** Enche a partir do zero quando aparece (mudanças de valor sempre deslizam). */
   animated?: boolean;
 };
 
@@ -18,21 +20,31 @@ export function ProgressBar({
   trackColor = colors.border,
   animated = false
 }: ProgressBarProps) {
+  const reduceMotion = useReduceMotion();
   const normalized = Math.max(0, Math.min(100, value));
   const progress = useRef(new Animated.Value(animated ? 0 : normalized)).current;
+  const mounted = useRef(false);
 
   useEffect(() => {
-    if (!animated) {
+    const isFirstRun = !mounted.current;
+    mounted.current = true;
+
+    if (reduceMotion || (isFirstRun && !animated)) {
       progress.setValue(normalized);
       return;
     }
 
-    Animated.timing(progress, {
+    const animation = Animated.timing(progress, {
       toValue: normalized,
-      duration: 600,
+      duration: isFirstRun ? 700 : 450,
+      easing: Easing.out(Easing.cubic),
+      // Largura não é animável no driver nativo.
       useNativeDriver: false
-    }).start();
-  }, [animated, normalized, progress]);
+    });
+    animation.start();
+
+    return () => animation.stop();
+  }, [animated, normalized, progress, reduceMotion]);
 
   return (
     <View

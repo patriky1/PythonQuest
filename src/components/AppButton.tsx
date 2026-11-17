@@ -1,15 +1,8 @@
 import React, { ComponentProps } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleProp,
-  StyleSheet,
-  Text,
-  View,
-  ViewStyle
-} from 'react-native';
+import { ActivityIndicator, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+import { PressableScale } from '@/components/motion';
 import { colors, radius, spacing } from '@/theme/colors';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dangerOutline';
@@ -33,6 +26,14 @@ const TEXT_COLOR: Record<Variant, string> = {
   dangerOutline: colors.danger
 };
 
+const RIPPLE_COLOR: Record<Variant, string> = {
+  primary: 'rgba(255,255,255,0.22)',
+  secondary: 'rgba(255,255,255,0.22)',
+  danger: 'rgba(255,255,255,0.22)',
+  ghost: 'rgba(15,23,42,0.08)',
+  dangerOutline: 'rgba(220,38,38,0.1)'
+};
+
 export function AppButton({
   title,
   onPress,
@@ -47,18 +48,19 @@ export function AppButton({
   const textColor = TEXT_COLOR[variant];
 
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={title}
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       disabled={isDisabled}
       onPress={onPress}
-      style={({ pressed }) => [
+      scaleTo={0.96}
+      android_ripple={{ color: RIPPLE_COLOR[variant], foreground: true }}
+      style={[
         styles.button,
         compact && styles.compact,
         styles[variant],
         isDisabled && styles.disabled,
-        pressed && !isDisabled && styles.pressed,
         style
       ]}
     >
@@ -77,7 +79,7 @@ export function AppButton({
           </Text>
         </View>
       )}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -87,7 +89,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    overflow: 'hidden'
   },
   compact: {
     minHeight: 40,
@@ -124,10 +127,6 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.5
-  },
-  pressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }]
   },
   text: {
     fontSize: 16,
