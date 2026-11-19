@@ -11,6 +11,7 @@ import {
   Animated,
   Easing,
   Image,
+  Keyboard,
   LayoutChangeEvent,
   Modal,
   Platform,
@@ -461,6 +462,28 @@ export default function PythonQuestAdventureScreen() {
     },
     [profileOwner]
   );
+
+  // Teclado: com a tela de ponta a ponta do Android, o sistema não encolhe a
+  // janela e o teclado cobre o editor. Mede quanto ele cobre a tela de fato e
+  // empurra o conteúdo esse tanto (0 se o sistema já tiver encolhido a janela).
+  const screenRef = useRef<React.ComponentRef<typeof View>>(null);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (event) => {
+      const keyboardTop = event.endCoordinates.screenY;
+
+      screenRef.current?.measureInWindow((_x, y, _width, height) => {
+        setKeyboardInset(Math.max(0, Math.round(y + height - keyboardTop)));
+      });
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardInset(0));
+
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     speedRef.current = fastMode ? 2 : 1;
@@ -1368,7 +1391,7 @@ export default function PythonQuestAdventureScreen() {
           : 'idle';
 
   return (
-    <View style={styles.screen}>
+    <View ref={screenRef} style={[styles.screen, { paddingBottom: keyboardInset }]}>
       <Stack.Screen
         options={{
           headerRight: () => (
@@ -1391,7 +1414,8 @@ export default function PythonQuestAdventureScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={styles.phaseScroll}
+        // Teclado aberto: some para sobrar espaço ao editor.
+        style={[styles.phaseScroll, keyboardInset > 0 && styles.hiddenWhileTyping]}
         contentContainerStyle={styles.phaseRow}
       >
         {missions.map((item, index) => {
@@ -1429,7 +1453,7 @@ export default function PythonQuestAdventureScreen() {
       </ScrollView>
 
       {/* Missão e objetivos */}
-      <View style={styles.missionBar}>
+      <View style={[styles.missionBar, keyboardInset > 0 && styles.hiddenWhileTyping]}>
         <View style={styles.missionInfo}>
           <Text style={styles.missionTitle} numberOfLines={1}>
             {mission.title}
@@ -1930,7 +1954,13 @@ export default function PythonQuestAdventureScreen() {
       </View>
 
       {/* Painel de programação fixo: editor, atalhos e execução */}
-      <View style={[styles.controlPanel, { paddingBottom: Math.max(insets.bottom, spacing.sm) + spacing.xs }]}>
+      <View
+        style={[
+          styles.controlPanel,
+          // Com o teclado aberto, a barra de navegação fica escondida atrás dele.
+          { paddingBottom: (keyboardInset > 0 ? 0 : Math.max(insets.bottom, spacing.sm)) + spacing.xs }
+        ]}
+      >
         <CodeEditor
           code={code}
           onChangeCode={handleTyping}
@@ -2311,6 +2341,9 @@ export default function PythonQuestAdventureScreen() {
 }
 
 const styles = StyleSheet.create({
+  hiddenWhileTyping: {
+    display: 'none'
+  },
   screen: {
     flex: 1,
     backgroundColor: colors.background

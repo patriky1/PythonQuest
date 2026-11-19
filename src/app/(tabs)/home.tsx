@@ -226,21 +226,28 @@ export default function HomeScreen() {
                     />
                   </Pressable>
 
-                  <Pressable
-                    onPress={pokeMascot}
-                    accessibilityLiveRegion="polite"
+                  {/* Faixa entre o mascote e a borda da tela: o balão nunca passa
+                      dela e quebra o texto em linhas quando falta espaço. */}
+                  <View
+                    pointerEvents="box-none"
                     style={[
-                      styles.bubble,
+                      styles.bubbleSlot,
                       bubbleOnRight
-                        ? { left: mascotLeft + MASCOT_SIZE + 6 }
-                        : { right: trailWidth - mascotLeft + 6 }
+                        ? { left: mascotLeft + MASCOT_SIZE + 6, right: 0, alignItems: 'flex-start' }
+                        : { left: 0, right: trailWidth - mascotLeft + 6, alignItems: 'flex-end' }
                     ]}
                   >
-                    <View
-                      style={[styles.bubbleTail, bubbleOnRight ? { left: -5 } : { right: -5 }]}
-                    />
-                    <Text style={styles.bubbleText}>{tips[tipIndex]}</Text>
-                  </Pressable>
+                    <Pressable
+                      onPress={pokeMascot}
+                      accessibilityLiveRegion="polite"
+                      style={styles.bubble}
+                    >
+                      <View
+                        style={[styles.bubbleTail, bubbleOnRight ? { left: -5 } : { right: -5 }]}
+                      />
+                      <Text style={styles.bubbleText}>{tips[tipIndex]}</Text>
+                    </Pressable>
+                  </View>
                 </>
               ) : null}
             </View>
@@ -582,9 +589,11 @@ const styles = StyleSheet.create({
     width: MASCOT_SIZE,
     height: MASCOT_SIZE
   },
-  bubble: {
+  bubbleSlot: {
     position: 'absolute',
-    bottom: 26,
+    bottom: 26
+  },
+  bubble: {
     maxWidth: 190,
     backgroundColor: '#FFFFFF',
     borderRadius: 14,

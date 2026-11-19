@@ -362,6 +362,7 @@ export default function PlaygroundScreen() {
           selection={forcedSelection}
           onSelectionChange={handleSelectionChange}
           multiline
+          submitBehavior="newline"
           autoCapitalize="none"
           autoCorrect={false}
           spellCheck={false}
@@ -398,6 +399,7 @@ export default function PlaygroundScreen() {
               value={inputs}
               onChangeText={setInputs}
               multiline
+              submitBehavior="newline"
               autoCapitalize="none"
               autoCorrect={false}
               placeholder={'Ana\n16'}

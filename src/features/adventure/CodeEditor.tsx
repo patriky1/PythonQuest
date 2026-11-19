@@ -186,7 +186,9 @@ export function CodeEditor({
             autoCorrect={false}
             spellCheck={false}
             autoComplete="off"
-            keyboardType="visible-password"
+            // Não usar keyboardType="visible-password": no Android ele anula o modo
+            // multilinha e o teclado perde a tecla Enter (quebra de linha).
+            submitBehavior="newline"
             textAlignVertical="top"
             underlineColorAndroid="transparent"
             onChangeText={onChangeCode}
